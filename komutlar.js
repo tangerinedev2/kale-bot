@@ -2010,21 +2010,44 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             const username = args[0];
             if (!username) return message.reply(`${EMOJIS.carpi} Bir kullanıcı adı belirt!`);
             try {
-                const response = await fetch(`https://api.roblox.com/users/get-by-username?username=${encodeURIComponent(username)}`);
-                const data = await response.json();
-                if (!data || !data.Id) return message.reply(`${EMOJIS.carpi} Kullanıcı bulunamadı.`);
+                const idResponse = await fetch('https://users.roblox.com/v1/usernames/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ usernames: [username], excludeBannedUsers: false })
+                });
+                const idData = await idResponse.json();
+
+                if (!idData.data || idData.data.length === 0) {
+                    return message.reply(`${EMOJIS.carpi} Kullanıcı bulunamadı.`);
+                }
+
+                const user = idData.data[0];
+                const userId = user.id;
+
+                const userResponse = await fetch(`https://users.roblox.com/v1/users/${userId}`);
+                const userData = await userResponse.json();
+
+                const avatarResponse = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`);
+                const avatarData = await avatarResponse.json();
+                const avatarUrl = avatarData.data?.[0]?.imageUrl || `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
+
                 const embed = new EmbedBuilder()
                     .setColor(0x00B2FF)
-                    .setTitle(`ROBLOX - ${data.Username}`)
-                    .setThumbnail(`https://www.roblox.com/headshot-thumbnail/image?userId=${data.Id}&width=420&height=420&format=png`)
+                    .setTitle(`ROBLOX - ${userData.name}`)
+                    .setThumbnail(avatarUrl)
                     .addFields(
-                        { name: 'ID', value: `${data.Id}`, inline: true },
-                        { name: 'Kullanıcı', value: data.Username, inline: true },
-                        { name: 'Profil', value: `[Tıkla](https://www.roblox.com/users/${data.Id}/profile)`, inline: true }
+                        { name: 'ID', value: `${userId}`, inline: true },
+                        { name: 'Kullanıcı', value: userData.name, inline: true },
+                        { name: 'Görünen Ad', value: userData.displayName || userData.name, inline: true },
+                        { name: 'Profil', value: `[Tıkla](https://www.roblox.com/users/${userId}/profile)`, inline: true },
+                        { name: 'Hesap Oluşturma', value: userData.created ? new Date(userData.created).toLocaleDateString('tr-TR') : 'Bilinmiyor', inline: true }
                     )
                     .setFooter({ text: `KALE ${BAYRAK}` });
                 await message.reply({ embeds: [embed] });
-            } catch (e) { message.reply('❌ Hata!'); }
+            } catch (e) {
+                console.error('Roblox hatası:', e);
+                message.reply('❌ Roblox API hatası!');
+            }
             return;
         }
 
@@ -2035,14 +2058,21 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const response = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(player)}`);
                 const data = await response.json();
                 if (!data || !data.id) return message.reply(`${EMOJIS.carpi} Oyuncu bulunamadı.`);
+
+                const uuid = data.id;
+
                 const embed = new EmbedBuilder()
                     .setColor(0x00B2FF)
                     .setTitle(`MINECRAFT - ${data.name}`)
-                    .setDescription(`**Oyuncu:** ${data.name}\n**UUID:** ${data.id}`)
-                    .setImage(`https://crafatar.com/renders/body/${data.id}`)
+                    .setDescription(`**Oyuncu:** ${data.name}\n**UUID:** ${uuid}`)
+                    .setThumbnail(`https://api.fadehost.com/api/minecraft/skin/body/256/${uuid}.png`)
+                    .setImage(`https://crafatar.com/renders/body/${uuid}?overlay=true`)
                     .setFooter({ text: `KALE ${BAYRAK}` });
                 await message.reply({ embeds: [embed] });
-            } catch (e) { message.reply('❌ Hata!'); }
+            } catch (e) {
+                console.error('Minecraft hatası:', e);
+                message.reply('❌ Minecraft API hatası!');
+            }
             return;
         }
 
