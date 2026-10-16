@@ -155,9 +155,9 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             }
 
             if (message.guild?.id !== GUILD_ID) return;
-            if (!message.content.startsWith('k!')) return;
+            if (!message.content.startsWith(PREFIX)) return;
 
-            const args = message.content.slice(2).trim().split(/ +/);
+            const args = message.content.slice(PREFIX.length).trim().split(/ +/);
             const command = args.shift().toLowerCase();
             const member = message.member;
             const isAdmin = member.permissions.has(PermissionsBitField.Flags.Administrator);
@@ -239,7 +239,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     }
                     return message.reply({ embeds: [new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.ayarlar} LOG AYARLARI`).setDescription(desc).setFooter({ text: FOOTER })] });
                 }
-                return message.reply(`${EMOJI.carpi} Kullanım: \`k!ayar aç/kapa/durum <log>\``);
+                return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}ayar aç/kapa/durum <log>\``);
             }
 
             // ==================== DEBUG ====================
@@ -343,7 +343,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const target = message.guild.members.cache.get(user.id);
                 if (!target) return message.reply(`${EMOJI.carpi} Kullanıcı bulunamadı!`);
                 const sure = parseInt(args[1]) || 10;
-                const reason = args.slice(2).join(' ') || 'Sebep yok';
+                const reason = args.slice(PREFIX.length).join(' ') || 'Sebep yok';
                 try {
                     await target.timeout(sure * 60 * 1000, reason);
                     db.addModeration(user.id, 'timeout', reason, sure, message.author.tag, message.author.id);
@@ -836,7 +836,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
 
             if (command === 'borsa' || command === 'hisse') {
                 const symbol = args[0]?.toUpperCase();
-                if (!symbol) return message.reply(`${EMOJI.carpi} Bir hisse sembolü belirt! Örnek: \`k!borsa AAPL\``);
+                if (!symbol) return message.reply(`${EMOJI.carpi} Bir hisse sembolü belirt! Örnek: \`${PREFIX}borsa AAPL\``);
                 try {
                     const response = await safeFetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
                     const data = await response.json();
@@ -883,7 +883,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
 
             if (command === 'wiki') {
                 const query = args.join(' ');
-                if (!query) return message.reply(`${EMOJI.carpi} Bir konu belirt! Örnek: \`k!wiki Atatürk\``);
+                if (!query) return message.reply(`${EMOJI.carpi} Bir konu belirt! Örnek: \`${PREFIX}wiki Atatürk\``);
                 try {
                     const response = await safeFetch(`https://tr.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`);
                     const data = await response.json();
@@ -999,7 +999,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
 
             if (command === 'ülke' || command === 'ulke' || command === 'country') {
                 const ulke = args.join(' ');
-                if (!ulke) return message.reply(`${EMOJI.carpi} Bir ülke adı belirt! Örnek: \`k!ülke Türkiye\``);
+                if (!ulke) return message.reply(`${EMOJI.carpi} Bir ülke adı belirt! Örnek: \`${PREFIX}ülke Türkiye\``);
                 try {
                     const response = await safeFetch(`https://restcountries.com/v3.1/name/${encodeURIComponent(ulke)}`);
                     if (!response.ok) return message.reply(`${EMOJI.carpi} Ülke bulunamadı.`);
@@ -1037,7 +1037,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             // ==================== TARAMA ====================
             if (command === 'tarama' || command === 'tara') {
                 let url = args[0];
-                if (!url) return message.reply(`${EMOJI.carpi} Bir URL belirt! Örnek: \`k!tarama google.com\``);
+                if (!url) return message.reply(`${EMOJI.carpi} Bir URL belirt! Örnek: \`${PREFIX}tarama google.com\``);
                 if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url;
                 
                 await message.reply(`${EMOJI.yukleniyor} **Site taranıyor...** \`${url}\``);
@@ -1137,15 +1137,15 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             if (command === 'cipher') {
                 const altKomut = args[0]?.toLowerCase();
                 const tip = args[1]?.toLowerCase();
-                const metin = args.slice(2).join(' ');
+                const metin = args.slice(PREFIX.length).join(' ');
                 
                 if (!altKomut) {
-                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.encode} CIPHER KOMUTLARI`).setDescription(`**Kullanım:**\n\`k!cipher encode base64 <metin>\`\n\`k!cipher decode base64 <metin>\`\n\`k!cipher hash <metin>\`\n\`k!cipher timestamp\``).setFooter({ text: FOOTER });
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.encode} CIPHER KOMUTLARI`).setDescription(`**Kullanım:**\n\`${PREFIX}cipher encode base64 <metin>\`\n\`${PREFIX}cipher decode base64 <metin>\`\n\`${PREFIX}cipher hash <metin>\`\n\`${PREFIX}cipher timestamp\``).setFooter({ text: FOOTER });
                     return message.reply({ embeds: [embed] });
                 }
                 
                 if (altKomut === 'encode') {
-                    if (!tip || !metin) return message.reply(`${EMOJI.carpi} Kullanım: \`k!cipher encode base64 <metin>\``);
+                    if (!tip || !metin) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}cipher encode base64 <metin>\``);
                     let sonuc = '';
                     if (tip === 'base64') sonuc = Buffer.from(metin, 'utf-8').toString('base64');
                     else if (tip === 'hex') sonuc = Buffer.from(metin, 'utf-8').toString('hex');
@@ -1161,7 +1161,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 }
                 
                 if (altKomut === 'decode') {
-                    if (!tip || !metin) return message.reply(`${EMOJI.carpi} Kullanım: \`k!cipher decode base64 <metin>\``);
+                    if (!tip || !metin) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}cipher decode base64 <metin>\``);
                     try {
                         let sonuc = '';
                         if (tip === 'base64') sonuc = Buffer.from(metin, 'base64').toString('utf-8');
@@ -1182,7 +1182,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 
                 if (altKomut === 'hash') {
                     const hashMetin = args.slice(1).join(' ');
-                    if (!hashMetin) return message.reply(`${EMOJI.carpi} Kullanım: \`k!cipher hash <metin>\``);
+                    if (!hashMetin) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}cipher hash <metin>\``);
                     const md5 = crypto.createHash('md5').update(hashMetin).digest('hex');
                     const sha1 = crypto.createHash('sha1').update(hashMetin).digest('hex');
                     const sha256 = crypto.createHash('sha256').update(hashMetin).digest('hex');
@@ -1202,14 +1202,14 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     return message.reply({ embeds: [embed] });
                 }
                 
-                return message.reply(`${EMOJI.carpi} Bilinmeyen komut. \`k!cipher\` yaz.`);
+                return message.reply(`${EMOJI.carpi} Bilinmeyen komut. \`${PREFIX}cipher\` yaz.`);
             }
                         // ==================== YARDIM ====================
             if (command === 'yardim' || command === 'yardım' || command === 'help') {
                 const embed = new EmbedBuilder()
                     .setColor(0xE30A17)
                     .setTitle(`${EMOJI.kale} UKRAYNAA BOT KOMUTLARI ${EMOJI.trbayrak}`)
-                    .setDescription(`Merhaba **${message.author.username}**! 👋\nToplam **80+ komut** ile hizmetindeyim.\n\n📖 **Detaylı yardım için:** \`k!yardim <komut>\``)
+                    .setDescription(`Merhaba **${message.author.username}**! 👋\nToplam **80+ komut** ile hizmetindeyim.\n\n📖 **Detaylı yardım için:** \`${PREFIX}yardim <komut>\``)
                     .addFields(
                         { name: `${EMOJI.kalkan} MODERASYON (ADMIN)`, value: '`temizle` `kick` `ban` `unban` `uyar` `uyarılar` `sustur` `susturma-kaldır` `slowmode` `kanal-kilit` `kanal-aç`', inline: false },
                         { name: `${EMOJI.silah} EĞLENCE`, value: '`milyoner` `rusruleti` `ship` `1vs1` `apoyabas`', inline: false },
@@ -1261,7 +1261,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 if (!bilgi) return message.reply(`${EMOJI.carpi} **\`${arananKomut}\`** komutu hakkında bilgi bulunamadı!`);
                 const embed = new EmbedBuilder()
                     .setColor(0x4FC3F7)
-                    .setTitle(`📖 \`k!${arananKomut}\` KOMUTU`)
+                    .setTitle(`📖 \`${PREFIX}${arananKomut}\` KOMUTU`)
                     .addFields(
                         { name: '📝 Açıklama', value: bilgi.aciklama, inline: false },
                         { name: '💡 Kullanım', value: `\`${bilgi.kullanim}\``, inline: false }
