@@ -6,9 +6,10 @@ const crypto = require('crypto');
 const db = require('./data/db.js');
 const TRIVIA_SORULARI = require('./trivia.js');
 
+const EPHEMERAL = 64;
+
 // =========================== EMOJİLER ===========================
 const EMOJI = {
-    // Mevcut
     tik: '<a:tik:1546323559008178367>',
     carpi: '<a:carpi:1546323711567859712>',
     sari: '<:sari:1547953694631395389>',
@@ -24,7 +25,6 @@ const EMOJI = {
     bbknk: '<a:bbknk:1546323191918624768>',
     hosgeldin: '<a:Hosgeldin:1546322757938188308>',
     kale: '<:KALE:1546322596532985896>',
-    // Yeni eklenenler
     bilgi: '<:bilgi:1559527127961837668>',
     banhammer: '<:banhammer:1559526130560794645>',
     kick: '<:kick:1559528100998414346>',
@@ -53,6 +53,9 @@ const EMOJI = {
     decode: '<:decode:1559536912216367176>'
 };
 
+const BAŞLIK = `${EMOJI.kale} `;
+const FOOTER = `UKRAYNAA ${EMOJI.trbayrak}`;
+
 async function safeFetch(url, options = {}, timeout = 10000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
@@ -68,7 +71,6 @@ async function safeFetch(url, options = {}, timeout = 10000) {
 
 module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG_CHANNEL_ID, KURAL_KANAL_ID, ACIL_DURUM_SIFRE, acilDurum, ayarlar, saveAyarlar, appendUserLog, loadUserLog, saveUserLog, getUserAktiflik, saveAktiflik, getUserWarns, saveWarns, warns, ATATURK_IMAGE, ATATURK_SOZLER, ATATURK_BILGI, RESIM_KLASORU, VIDEO_PATH, ISTIKLAL_PATH, ffmpegPath, audioSettings, playVideoWithAudio, playIstiklal, playCustomSound, playJumpscare, returnToFixedChannel, getMeemFiles, JUMPSCARE_COOLDOWN, JUMPSCARE_FILES) => {
 
-    // Eski EMOJIS objesini yeni EMOJI ile değiştir (uyumluluk için)
     Object.assign(EMOJIS, EMOJI);
 
     const ADMIN_ONLY_COMMANDS = [
@@ -78,9 +80,47 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
         'uyar', 'sustur', 'susturma-kaldır', 'slowmode', 'kanal-kilit', 'kanal-aç'
     ];
 
-    // =========================== RULET İSTATİSTİKLERİ ===========================
+    const FIKRALAR = [
+        "Temel ile Dursun bir gün ava çıkmışlar. Temel bir kuş vurmuş, Dursun 'Bu ne?' demiş. Temel 'Kuş' demiş. Dursun 'Yok canım, bu kartal' demiş. Temel 'Ula kartal olsa kanadı olurdu' demiş.",
+        "Adamın biri doktora gitmiş: 'Doktor, bacağımı kaldırınca acıyor.' Doktor: 'Kaldırma o zaman.'",
+        "İki matematikçi bir restorana girmiş. Garson: 'Ne alırsınız?' Matematikçiler: 'Pi.' Garson: 'Kaç tane?' Matematikçiler: '3.14159...'",
+        "Neden bilgisayarlar denize giremez? Çünkü Windows açık kalır.",
+        "Bir programcı, eşine 'Markete git, bir ekmek al; eğer yumurta varsa 6 tane al' demiş. Eşi markete gitmiş, yumurta olduğunu görünce 6 ekmek almış."
+    ];
+
+    const ESPRILER = [
+        "Neden bilgisayarlar hasta olmaz? Çünkü byte yiyorlar!",
+        "Neden matematikçiler kötü komedyen? Çünkü şakaları kuru!",
+        "Neden programcılar karanlıktan korkar? Çünkü çok fazla bug var!",
+        "Neden balıklar okula gitmez? Çünkü zaten okulda yüzerler!",
+        "Neden kediler bilgisayar kullanmaz? Çünkü fareyi kovalarlar!"
+    ];
+
+    const ARGO_SOZLUK = [
+        { k: 'Kafayı yemek', a: 'Delirmek' },
+        { k: 'Tüymek', a: 'Kaçmak' },
+        { k: 'Yan çizmek', a: 'Sözünden dönmek' },
+        { k: 'Pabucu dama atılmak', a: 'Gözden düşmek' },
+        { k: 'Ağzı açık kalmak', a: 'Çok şaşırmak' },
+        { k: 'Burnundan solumak', a: 'Çok sinirlenmek' },
+        { k: 'Çam devirmek', a: 'Pot kırmak' },
+        { k: 'Dolap çevirmek', a: 'Hile yapmak' },
+        { k: 'Etekleri zil çalmak', a: 'Çok sevinmek' },
+        { k: 'Gözüne girmek', a: 'Sevgisini kazanmak' }
+    ];
+
+    const KELIME_LISTESI = [
+        'elma', 'armut', 'kedi', 'köpek', 'kuş', 'balık', 'aslan', 'kaplan', 'fil', 'zürafa',
+        'masa', 'sandalye', 'kapı', 'pencere', 'kitap', 'defter', 'kalem', 'silgi', 'bilgisayar', 'telefon'
+    ];
+
+    const aktifKelime = new Map();
+    const aktifTahmin = new Map();
+    const aktifAdamAsmaca = new Map();
+    const aktifTrivia = new Map();
     const ruletStats = new Map();
 
+    // =========================== MESAJ DİNLEYİCİ ===========================
     client.on('messageCreate', async (message) => {
         try {
             if (message.author.bot) return;
@@ -137,7 +177,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     .setTitle(`${EMOJI.kale} APOYA BASILDI`)
                     .setDescription(`**APOYA ${apoCount} KEZ BASILDI**\n**BASMA SEVİYESİ: ${level}**`)
                     .setThumbnail('https://cdn.discordapp.com/attachments/1194707901852430458/1280024005394567200/image.gif')
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak}` })
+                    .setFooter({ text: FOOTER })
                     .setTimestamp();
                 await message.reply({ embeds: [embed] });
                 return;
@@ -196,7 +236,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     for (const [key, value] of Object.entries(ayarlar)) {
                         if (key.startsWith('log_')) desc += `${value ? EMOJI.tik : EMOJI.carpi} \`${key.replace('log_', '')}\`\n`;
                     }
-                    return message.reply({ embeds: [new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.ayarlar} LOG AYARLARI`).setDescription(desc).setFooter({ text: `KALE ${EMOJI.trbayrak}` })] });
+                    return message.reply({ embeds: [new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.ayarlar} LOG AYARLARI`).setDescription(desc).setFooter({ text: FOOTER })] });
                 }
                 return message.reply(`${EMOJI.carpi} Kullanım: \`k!ayar aç/kapa/durum <log>\``);
             }
@@ -212,7 +252,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 testSonuclari.push(`${EMOJI.tik} SQLite Kullanıcı: ${db.getTotalUsers()}`);
                 testSonuclari.push(`${EMOJI.tik} SQLite Mesaj: ${db.getTotalMessages()}`);
                 testSonuclari.push(`${EMOJI.tik} SQLite Apo Sayaç: ${db.getApoCount()}`);
-                const rapor = `KALE BOT DEBUG RAPORU\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n${testSonuclari.join('\n')}`;
+                const rapor = `UKRAYNAA BOT DEBUG RAPORU\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n${testSonuclari.join('\n')}`;
                 const buffer = Buffer.from(rapor, 'utf-8');
                 const attachment = new AttachmentBuilder(buffer, { name: `debug-${Date.now()}.log` });
                 try {
@@ -349,14 +389,10 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const hedef = message.mentions.users.first() || message.author;
                 const kullanici = message.author;
                 
-                // İstatistik al
-                if (!ruletStats.has(kullanici.id)) {
-                    ruletStats.set(kullanici.id, { oynanan: 0, kazanilan: 0, kaybedilen: 0 });
-                }
+                if (!ruletStats.has(kullanici.id)) ruletStats.set(kullanici.id, { oynanan: 0, kazanilan: 0, kaybedilen: 0 });
                 const stats = ruletStats.get(kullanici.id);
                 stats.oynanan++;
                 
-                // 6 slot, 1 kurşun
                 const kursunSlot = Math.floor(Math.random() * 6) + 1;
                 const cekilenSlot = Math.floor(Math.random() * 6) + 1;
                 const oldu = kursunSlot === cekilenSlot;
@@ -378,7 +414,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     .addFields(
                         { name: `${EMOJI.kazanan} İstatistiklerin`, value: `**Oynanan:** \`${stats.oynanan}\`\n**Kazanılan:** \`${stats.kazanilan}\`\n**Kaybedilen:** \`${stats.kaybedilen}\`\n**Kazanma Oranı:** \`${sans}%\``, inline: false }
                     )
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak} • Şansına güven!` })
+                    .setFooter({ text: `${FOOTER} • Şansına güven!` })
                     .setTimestamp();
                 
                 await message.reply({ embeds: [embed] });
@@ -407,7 +443,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     .setTitle(`${EMOJI.ship} AŞK ÖLÇER ${EMOJI.ship}`)
                     .setDescription(`**${message.author.username}** ${EMOJI.ship} **${target.username}**\n\n\`${bar}\` **${percentage}%**\n\n${yorum}`)
                     .setThumbnail(target.displayAvatarURL({ dynamic: true, size: 256 }))
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak}` })
+                    .setFooter({ text: FOOTER })
                     .setTimestamp();
                 
                 await message.reply({ embeds: [embed] });
@@ -425,7 +461,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     .setColor(0xE30A17)
                     .setTitle(`${EMOJI.silah} DÜELLO ${EMOJI.silah}`)
                     .setDescription(`⚔️ **${message.author.username}** ve **${target.username}** arasında düello başladı!\n\n**${target.username}**, düelloyu kabul ediyor musun?`)
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak} • 30 saniye içinde cevap ver` })
+                    .setFooter({ text: `${FOOTER} • 30 saniye içinde cevap ver` })
                     .setTimestamp();
                 
                 const row = new ActionRowBuilder()
@@ -457,7 +493,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     .setColor(0xE30A17)
                     .setTitle(`${EMOJI.para} KİM MİLYONER OLMAK İSTER? ${EMOJI.para}`)
                     .setDescription(`**${message.author.username}**, yarışmaya hoş geldin!\n\n**13 soru** sorulacak.\n\n📚 **Önce kategoriyi seç:**`)
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak} • Kategori seç` })
+                    .setFooter({ text: `${FOOTER} • Kategori seç` })
                     .setTimestamp();
                 const msg = await message.reply({ embeds: [embed], components: [row, row2] });
                 const secimCollector = msg.createMessageComponentCollector({ filter: (i) => i.customId.startsWith('mil_') && i.user.id === userId, time: 60000 });
@@ -470,11 +506,11 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     if (tip === 'kat') {
                         secilenKategori = deger;
                         await interaction.update({
-                            embeds: [new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.para} KİM MİLYONER OLMAK İSTER?`).setDescription(`📚 **Kategori:** \`${secilenKategori === 'karisik' ? 'Karışık' : secilenKategori.charAt(0).toUpperCase() + secilenKategori.slice(1)}\`\n\n📊 **Şimdi zorluk seviyesini seç:**`).setFooter({ text: `KALE ${EMOJI.trbayrak} • Zorluk seç` }).setTimestamp()],
+                            embeds: [new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.para} KİM MİLYONER OLMAK İSTER?`).setDescription(`📚 **Kategori:** \`${secilenKategori === 'karisik' ? 'Karışık' : secilenKategori.charAt(0).toUpperCase() + secilenKategori.slice(1)}\`\n\n📊 **Şimdi zorluk seviyesini seç:**`).setFooter({ text: `${FOOTER} • Zorluk seç` }).setTimestamp()],
                             components: [row2]
                         });
                     } else if (tip === 'zor') {
-                        if (!secilenKategori) return interaction.reply({ content: `${EMOJI.carpi} Önce kategori seç!`, ephemeral: true });
+                        if (!secilenKategori) return interaction.reply({ content: `${EMOJI.carpi} Önce kategori seç!`, flags: EPHEMERAL });
                         secilenZorluk = deger;
                         secimCollector.stop('basla');
                     }
@@ -514,7 +550,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                                 { name: '📊 Başarı', value: `\`${Math.round((dogruSayisi / 13) * 100)}%\``, inline: true },
                                 { name: '📚 Kategori', value: `\`${kategoriGoster}\``, inline: true },
                                 { name: '🎚️ Zorluk', value: `\`${zorlukGoster}\``, inline: true }
-                            ).setFooter({ text: `KALE ${EMOJI.trbayrak} • Tebrikler!` }).setTimestamp();
+                            ).setFooter({ text: `${FOOTER} • Tebrikler!` }).setTimestamp();
                             return msg.edit({ embeds: [sonucEmbed], components: [] });
                         }
                         const soru = secilenSorular[soruIndex];
@@ -541,7 +577,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                             { name: '🎮 Oynayan', value: `<@${userId}>`, inline: true },
                             { name: '✅ Doğru', value: `\`${dogruSayisi}\``, inline: true },
                             { name: '❌ Yanlış', value: `\`${yanlisSayisi}\``, inline: true }
-                        ).setFooter({ text: `KALE ${EMOJI.trbayrak} • Süre: 30 saniye` }).setTimestamp();
+                        ).setFooter({ text: `${FOOTER} • Süre: 30 saniye` }).setTimestamp();
                         try { await msg.edit({ embeds: [embed], components: [row, row2] }); } catch (e) { return; }
                         const filter = (i) => i.customId.startsWith('mil_c_') && i.user.id === userId;
                         const collector = msg.createMessageComponentCollector({ filter, time: 30000, max: 1 });
@@ -562,7 +598,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                                 { name: '✅ Doğru Cevap', value: `\`${dogruCevap}\``, inline: true },
                                 { name: '🎯 Senin Cevabın', value: `\`${secenekler[secilenIndex]}\``, inline: true },
                                 { name: '📊 Skor', value: `\`${dogruSayisi}D / ${yanlisSayisi}Y\``, inline: true }
-                            ).setFooter({ text: `KALE ${EMOJI.trbayrak}` }).setTimestamp();
+                            ).setFooter({ text: FOOTER }).setTimestamp();
                             await interaction.update({ embeds: [sonucEmbed], components: [disabledRow, disabledRow2] });
                             setTimeout(() => { soruIndex++; soruSor(); }, 2500);
                         });
@@ -572,7 +608,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                                 const timeoutEmbed = new EmbedBuilder().setColor(0xFF0000).setTitle(`⏰ SÜRE DOLDU! (Soru ${soruIndex + 1}/13)`).setDescription(`**${soru.soru}**`).addFields(
                                     { name: '✅ Doğru Cevap', value: `\`${dogruCevap}\``, inline: true },
                                     { name: '📊 Skor', value: `\`${dogruSayisi}D / ${yanlisSayisi}Y\``, inline: true }
-                                ).setFooter({ text: `KALE ${EMOJI.trbayrak}` }).setTimestamp();
+                                ).setFooter({ text: FOOTER }).setTimestamp();
                                 msg.edit({ embeds: [timeoutEmbed], components: [] });
                                 setTimeout(() => { soruIndex++; soruSor(); }, 2500);
                             }
@@ -612,27 +648,27 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             if (command === 'gununsozu') {
                 const gun = new Date().getDate();
                 const soz = ATATURK_SOZLER[gun % ATATURK_SOZLER.length];
-                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} GÜNÜN ATATÜRK SÖZÜ`).setDescription(`*"${soz}"*`).setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} GÜNÜN ATATÜRK SÖZÜ`).setDescription(`*"${soz}"*`).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
 
             if (command === 'ataturkbilgi' || command === 'bilgi') {
                 const bilgi = ATATURK_BILGI[Math.floor(Math.random() * ATATURK_BILGI.length)];
-                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} ATATÜRK HAKKINDA`).setDescription(bilgi).setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} ATATÜRK HAKKINDA`).setDescription(bilgi).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
 
             if (command === 'cumhuriyet') {
-                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} CUMHURİYET`).setDescription('Türkiye Cumhuriyeti, 29 Ekim 1923\'de Mustafa Kemal Atatürk tarafından kurulmuştur.').setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} CUMHURİYET`).setDescription('Türkiye Cumhuriyeti, 29 Ekim 1923\'de Mustafa Kemal Atatürk tarafından kurulmuştur.').setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
 
             if (command === 'nutuk') {
                 const sozler = ['Nutuk, Atatürk\'ün 1927\'de okuduğu 36.5 saatlik konuşmadır.', 'Nutuk, Kurtuluş Savaşı\'nın resmi tarihidir.', '"Ey Türk gençliği!" ile başlayan bölüm en bilinenidir.'];
-                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} NUTUK`).setDescription(sozler[Math.floor(Math.random() * sozler.length)]).setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} NUTUK`).setDescription(sozler[Math.floor(Math.random() * sozler.length)]).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -644,14 +680,14 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             }
 
             if (command === 'saygi') {
-                const embed = new EmbedBuilder().setColor(0x2B2D31).setTitle(`${EMOJI.trbayrak} SAYGI DURUŞU`).setDescription('Atatürk ve tüm şehitlerimiz için saygı duruşu... 🕊️\n\n*"Ne mutlu Türk\'üm diyene!"*').setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0x2B2D31).setTitle(`${EMOJI.trbayrak} SAYGI DURUŞU`).setDescription('Atatürk ve tüm şehitlerimiz için saygı duruşu... 🕊️\n\n*"Ne mutlu Türk\'üm diyene!"*').setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
 
             if (command === 'vatan') {
                 const sozler = ['Vatan sevgisi imandan gelir.', 'Vatanını en çok seven görevini en iyi yapandır.', 'Vatan toprağı kutsaldır.'];
-                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} VATAN SEVGİSİ`).setDescription(sozler[Math.floor(Math.random() * sozler.length)]).setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} VATAN SEVGİSİ`).setDescription(sozler[Math.floor(Math.random() * sozler.length)]).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -660,22 +696,14 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const ping = client.ws.ping;
                 const pingEmoji = ping < 100 ? EMOJI.iyi_ping : EMOJI.kotu_ping;
                 const renk = ping < 100 ? 0x00FF00 : ping < 200 ? 0xFFD700 : 0xFF0000;
-                const embed = new EmbedBuilder()
-                    .setColor(renk)
-                    .setTitle(`${pingEmoji} PING`)
-                    .setDescription(`Bot gecikmesi: **${ping}ms**\n\n${ping < 100 ? '🚀 Mükemmel!' : ping < 200 ? '👍 İyi' : '⚠️ Yavaş'}`)
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(renk).setTitle(`${pingEmoji} PING`).setDescription(`Bot gecikmesi: **${ping}ms**\n\n${ping < 100 ? '🚀 Mükemmel!' : ping < 200 ? '👍 İyi' : '⚠️ Yavaş'}`).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
 
             if (command === 'zaman' || command === 'time') {
                 const now = new Date();
-                const embed = new EmbedBuilder()
-                    .setColor(0x4FC3F7)
-                    .setTitle(`${EMOJI.saat} GÜNCEL ZAMAN`)
-                    .setDescription(`**Tarih:** \`${now.toLocaleDateString('tr-TR')}\`\n**Saat:** \`${now.toLocaleTimeString('tr-TR')}\`\n**Hafta:** \`${['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'][now.getDay()]}\``)
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.saat} GÜNCEL ZAMAN`).setDescription(`**Tarih:** \`${now.toLocaleDateString('tr-TR')}\`\n**Saat:** \`${now.toLocaleTimeString('tr-TR')}\`\n**Hafta:** \`${['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'][now.getDay()]}\``).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -686,49 +714,35 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 if (!member) return message.reply(`${EMOJI.carpi} Kullanıcı bulunamadı.`);
                 const userData = db.getUser(user.id);
                 const warnCount = db.getWarnCount(user.id);
-                const embed = new EmbedBuilder()
-                    .setColor(0x4FC3F7)
-                    .setTitle(`${EMOJI.member} ${user.username}`)
-                    .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 1024 }))
-                    .addFields(
-                        { name: 'ID', value: `\`${user.id}\``, inline: true },
-                        { name: 'Katılım', value: member.joinedAt.toLocaleDateString('tr-TR'), inline: true },
-                        { name: 'Mesaj', value: `\`${userData?.messageCount || 0}\``, inline: true },
-                        { name: 'Ses', value: `\`${userData?.voiceMinutes || 0} dk\``, inline: true },
-                        { name: 'Uyarı', value: `\`${warnCount}\``, inline: true },
-                        { name: 'Roller', value: member.roles.cache.map(r => r.name).join(', ').slice(0, 1024) || 'Yok', inline: false }
-                    )
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak}`, iconURL: message.guild.iconURL() });
+                const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.member} ${user.username}`).setThumbnail(user.displayAvatarURL({ dynamic: true, size: 1024 })).addFields(
+                    { name: 'ID', value: `\`${user.id}\``, inline: true },
+                    { name: 'Katılım', value: member.joinedAt.toLocaleDateString('tr-TR'), inline: true },
+                    { name: 'Mesaj', value: `\`${userData?.messageCount || 0}\``, inline: true },
+                    { name: 'Ses', value: `\`${userData?.voiceMinutes || 0} dk\``, inline: true },
+                    { name: 'Uyarı', value: `\`${warnCount}\``, inline: true },
+                    { name: 'Roller', value: member.roles.cache.map(r => r.name).join(', ').slice(0, 1024) || 'Yok', inline: false }
+                ).setFooter({ text: FOOTER, iconURL: message.guild.iconURL() });
                 await message.reply({ embeds: [embed] });
                 return;
             }
 
             if (command === 'sunucu' || command === 'server') {
                 const guild = message.guild;
-                const embed = new EmbedBuilder()
-                    .setColor(0x4FC3F7)
-                    .setTitle(`${EMOJI.kale} ${guild.name}`)
-                    .setThumbnail(guild.iconURL({ dynamic: true }))
-                    .addFields(
-                        { name: `${EMOJI.member} Üye`, value: `\`${guild.memberCount}\``, inline: true },
-                        { name: `${EMOJI.kurucu} Sahip`, value: `<@${guild.ownerId}>`, inline: true },
-                        { name: '📅 Kuruluş', value: `<t:${Math.floor(guild.createdAt/1000)}:R>`, inline: true },
-                        { name: '📢 Kanal', value: `\`${guild.channels.cache.size}\``, inline: true },
-                        { name: '🎭 Rol', value: `\`${guild.roles.cache.size}\``, inline: true },
-                        { name: '💎 Boost', value: `\`${guild.premiumSubscriptionCount}\``, inline: true }
-                    )
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak}`, iconURL: guild.iconURL() });
+                const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.kale} ${guild.name}`).setThumbnail(guild.iconURL({ dynamic: true })).addFields(
+                    { name: `${EMOJI.member} Üye`, value: `\`${guild.memberCount}\``, inline: true },
+                    { name: `${EMOJI.kurucu} Sahip`, value: `<@${guild.ownerId}>`, inline: true },
+                    { name: '📅 Kuruluş', value: `<t:${Math.floor(guild.createdAt/1000)}:R>`, inline: true },
+                    { name: '📢 Kanal', value: `\`${guild.channels.cache.size}\``, inline: true },
+                    { name: '🎭 Rol', value: `\`${guild.roles.cache.size}\``, inline: true },
+                    { name: '💎 Boost', value: `\`${guild.premiumSubscriptionCount}\``, inline: true }
+                ).setFooter({ text: FOOTER, iconURL: guild.iconURL() });
                 await message.reply({ embeds: [embed] });
                 return;
             }
 
             if (command === 'avatar') {
                 const user = message.mentions.users.first() || message.author;
-                const embed = new EmbedBuilder()
-                    .setColor(0x4FC3F7)
-                    .setTitle(`${EMOJI.member} ${user.username} AVATAR`)
-                    .setImage(user.displayAvatarURL({ dynamic: true, size: 1024 }))
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.member} ${user.username} AVATAR`).setImage(user.displayAvatarURL({ dynamic: true, size: 1024 })).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -739,22 +753,14 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const fetchedUser = await client.users.fetch(user.id, { force: true });
                     const bannerURL = fetchedUser.bannerURL({ dynamic: true, size: 1024 });
                     if (!bannerURL) return message.reply(`${EMOJI.carpi} **${user.username}** kullanıcısının banner'ı yok.`);
-                    const embed = new EmbedBuilder()
-                        .setColor(0x4FC3F7)
-                        .setTitle(`${EMOJI.member} ${user.username} BANNER`)
-                        .setImage(bannerURL)
-                        .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.member} ${user.username} BANNER`).setImage(bannerURL).setFooter({ text: FOOTER });
                     await message.reply({ embeds: [embed] });
                 } catch (e) { message.reply(`${EMOJI.carpi} Banner alınamadı.`); }
                 return;
             }
 
             if (command === 'bot' || command === 'info') {
-                const embed = new EmbedBuilder()
-                    .setColor(0xE30A17)
-                    .setTitle(`${EMOJI.bot_logo} KALE BOT`)
-                    .setDescription(`**Geliştirici:** <@${ADMIN_ID}>\n**Sunucu:** ${message.guild.name}\n**Hizmet:** \`${message.guild.memberCount}\`\n**Ping:** \`${client.ws.ping}ms\`\n**Çalışma:** \`${Math.floor(process.uptime()/3600)} saat\`\n**Veritabanı:** \`SQLite\`\n**Komut:** \`80+\``)
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.bot_logo} UKRAYNAA BOT`).setDescription(`**Geliştirici:** <@${ADMIN_ID}>\n**Sunucu:** ${message.guild.name}\n**Hizmet:** \`${message.guild.memberCount}\`\n**Ping:** \`${client.ws.ping}ms\`\n**Çalışma:** \`${Math.floor(process.uptime()/3600)} saat\`\n**Veritabanı:** \`SQLite\`\n**Komut:** \`80+\``).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -772,22 +778,14 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     }
                 }
                 if (!desc) desc = '*Henüz veri yok.*';
-                const embed = new EmbedBuilder()
-                    .setColor(0xFFD700)
-                    .setTitle(`${EMOJI.kazanan} LİDERLİK TABLOSU`)
-                    .setDescription(desc)
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0xFFD700).setTitle(`${EMOJI.kazanan} LİDERLİK TABLOSU`).setDescription(desc).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
 
             if (command === 'günlük-istatistik' || command === 'gunluk-istatistik') {
                 const userData = db.getUser(userId);
-                const embed = new EmbedBuilder()
-                    .setColor(0x4FC3F7)
-                    .setTitle(`${EMOJI.bilgi} GÜNLÜK İSTATİSTİK`)
-                    .setDescription(`**Toplam Mesaj:** \`${userData?.messageCount || 0}\`\n**Toplam Ses:** \`${userData?.voiceMinutes || 0} dk\`\n**Kelime:** \`${userData?.wordCount || 0}\`\n**Karakter:** \`${userData?.characterCount || 0}\``)
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.bilgi} GÜNLÜK İSTATİSTİK`).setDescription(`**Toplam Mesaj:** \`${userData?.messageCount || 0}\`\n**Toplam Ses:** \`${userData?.voiceMinutes || 0} dk\`\n**Kelime:** \`${userData?.wordCount || 0}\`\n**Karakter:** \`${userData?.characterCount || 0}\``).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -798,12 +796,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const response = await safeFetch('https://open.er-api.com/v6/latest/USD');
                     const data = await response.json();
                     const rates = data.rates;
-                    const embed = new EmbedBuilder()
-                        .setColor(0x00FF00)
-                        .setTitle(`${EMOJI.dolar} DÖVİZ KURLARI (TRY)`)
-                        .setDescription(`**USD:** ${rates.TRY.toFixed(2)} ₺\n**EUR:** ${(rates.TRY / rates.EUR).toFixed(2)} ₺\n**GBP:** ${(rates.TRY / rates.GBP).toFixed(2)} ₺\n**JPY:** ${((rates.TRY / rates.JPY) * 100).toFixed(2)} ₺ (100 JPY)\n**CHF:** ${(rates.TRY / rates.CHF).toFixed(2)} ₺\n**CAD:** ${(rates.TRY / rates.CAD).toFixed(2)} ₺\n**AUD:** ${(rates.TRY / rates.AUD).toFixed(2)} ₺\n**CNY:** ${(rates.TRY / rates.CNY).toFixed(2)} ₺`)
-                        .setFooter({ text: `open.er-api.com ${EMOJI.trbayrak}` })
-                        .setTimestamp();
+                    const embed = new EmbedBuilder().setColor(0x00FF00).setTitle(`${EMOJI.dolar} DÖVİZ KURLARI (TRY)`).setDescription(`**USD:** ${rates.TRY.toFixed(2)} ₺\n**EUR:** ${(rates.TRY / rates.EUR).toFixed(2)} ₺\n**GBP:** ${(rates.TRY / rates.GBP).toFixed(2)} ₺\n**JPY:** ${((rates.TRY / rates.JPY) * 100).toFixed(2)} ₺ (100 JPY)\n**CHF:** ${(rates.TRY / rates.CHF).toFixed(2)} ₺\n**CAD:** ${(rates.TRY / rates.CAD).toFixed(2)} ₺\n**AUD:** ${(rates.TRY / rates.AUD).toFixed(2)} ₺\n**CNY:** ${(rates.TRY / rates.CNY).toFixed(2)} ₺`).setFooter({ text: `open.er-api.com ${EMOJI.trbayrak}` }).setTimestamp();
                     await message.reply({ embeds: [embed] });
                 } catch (e) { message.reply(`${EMOJI.carpi} Döviz kurları alınamadı.`); }
                 return;
@@ -815,11 +808,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const response = await safeFetch(`https://wttr.in/${encodeURIComponent(sehir)}?format=j1`);
                     const data = await response.json();
                     const current = data.current_condition[0];
-                    const embed = new EmbedBuilder()
-                        .setColor(0x4FC3F7)
-                        .setTitle(`☀️ ${sehir.toUpperCase()} HAVA DURUMU`)
-                        .setDescription(`**Durum:** ${current.weatherDesc[0].value}\n**Sıcaklık:** ${current.temp_C}°C (Hissedilen: ${current.FeelsLikeC}°C)\n**Nem:** %${current.humidity}\n**Rüzgar:** ${current.windspeedKmph} km/s`)
-                        .setFooter({ text: `wttr.in ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`☀️ ${sehir.toUpperCase()} HAVA DURUMU`).setDescription(`**Durum:** ${current.weatherDesc[0].value}\n**Sıcaklık:** ${current.temp_C}°C (Hissedilen: ${current.FeelsLikeC}°C)\n**Nem:** %${current.humidity}\n**Rüzgar:** ${current.windspeedKmph} km/s`).setFooter({ text: `wttr.in ${EMOJI.trbayrak}` });
                     await message.reply({ embeds: [embed] });
                 } catch (e) { message.reply(`${EMOJI.carpi} Hava durumu alınamadı.`); }
                 return;
@@ -839,7 +828,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     }
                     embed.setDescription(desc);
                 } catch (e) { embed.setDescription('❌ Kripto verileri alınamadı.'); }
-                embed.setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                embed.setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -856,11 +845,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const fiyat = meta.regularMarketPrice;
                     const oncekiKapanis = meta.chartPreviousClose || meta.previousClose;
                     const degisim = oncekiKapanis ? ((fiyat - oncekiKapanis) / oncekiKapanis * 100) : 0;
-                    const embed = new EmbedBuilder()
-                        .setColor(degisim >= 0 ? 0x00FF00 : 0xFF0000)
-                        .setTitle(`${degisim >= 0 ? '📈' : '📉'} ${meta.symbol} - ${meta.shortName || meta.symbol}`)
-                        .setDescription(`**Fiyat:** \`${fiyat} ${meta.currency}\`\n**Değişim:** \`${degisim >= 0 ? '+' : ''}${degisim.toFixed(2)}%\`\n**Önceki Kapanış:** \`${oncekiKapanis}\``)
-                        .setFooter({ text: `Yahoo Finance ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(degisim >= 0 ? 0x00FF00 : 0xFF0000).setTitle(`${degisim >= 0 ? '📈' : '📉'} ${meta.symbol} - ${meta.shortName || meta.symbol}`).setDescription(`**Fiyat:** \`${fiyat} ${meta.currency}\`\n**Değişim:** \`${degisim >= 0 ? '+' : ''}${degisim.toFixed(2)}%\`\n**Önceki Kapanış:** \`${oncekiKapanis}\``).setFooter({ text: `Yahoo Finance ${EMOJI.trbayrak}` });
                     await message.reply({ embeds: [embed] });
                 } catch (e) { message.reply(`${EMOJI.carpi} Hisse verisi alınamadı.`); }
                 return;
@@ -934,20 +919,14 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const response = await safeFetch(`https://api.github.com/users/${encodeURIComponent(username)}`);
                     if (!response.ok) return message.reply(`${EMOJI.carpi} Kullanıcı bulunamadı.`);
                     const data = await response.json();
-                    const embed = new EmbedBuilder()
-                        .setColor(0x333333)
-                        .setTitle(`${EMOJI.github} ${data.login}`)
-                        .setURL(data.html_url)
-                        .setThumbnail(data.avatar_url)
-                        .addFields(
-                            { name: 'İsim', value: data.name || 'Yok', inline: true },
-                            { name: 'Repo', value: `\`${data.public_repos}\``, inline: true },
-                            { name: 'Takipçi', value: `\`${data.followers}\``, inline: true },
-                            { name: 'Takip', value: `\`${data.following}\``, inline: true },
-                            { name: 'Konum', value: data.location || 'Yok', inline: true },
-                            { name: 'Katılım', value: new Date(data.created_at).toLocaleDateString('tr-TR'), inline: true }
-                        )
-                        .setFooter({ text: `GitHub ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x333333).setTitle(`${EMOJI.github} ${data.login}`).setURL(data.html_url).setThumbnail(data.avatar_url).addFields(
+                        { name: 'İsim', value: data.name || 'Yok', inline: true },
+                        { name: 'Repo', value: `\`${data.public_repos}\``, inline: true },
+                        { name: 'Takipçi', value: `\`${data.followers}\``, inline: true },
+                        { name: 'Takip', value: `\`${data.following}\``, inline: true },
+                        { name: 'Konum', value: data.location || 'Yok', inline: true },
+                        { name: 'Katılım', value: new Date(data.created_at).toLocaleDateString('tr-TR'), inline: true }
+                    ).setFooter({ text: `GitHub ${EMOJI.trbayrak}` });
                     await message.reply({ embeds: [embed] });
                 } catch (e) { message.reply(`${EMOJI.carpi} GitHub verisi alınamadı.`); }
                 return;
@@ -971,18 +950,13 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const avatarResponse = await safeFetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`);
                     const avatarData = await avatarResponse.json();
                     const avatarUrl = avatarData.data?.[0]?.imageUrl || `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
-                    const embed = new EmbedBuilder()
-                        .setColor(0x00B2FF)
-                        .setTitle(`${EMOJI.roblox} ROBLOX - ${userData.name}`)
-                        .setThumbnail(avatarUrl)
-                        .addFields(
-                            { name: 'ID', value: `\`${userId}\``, inline: true },
-                            { name: 'Kullanıcı', value: userData.name, inline: true },
-                            { name: 'Görünen Ad', value: userData.displayName || userData.name, inline: true },
-                            { name: 'Profil', value: `[Tıkla](https://www.roblox.com/users/${userId}/profile)`, inline: true },
-                            { name: 'Hesap Oluşturma', value: userData.created ? new Date(userData.created).toLocaleDateString('tr-TR') : 'Bilinmiyor', inline: true }
-                        )
-                        .setFooter({ text: `Roblox ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x00B2FF).setTitle(`${EMOJI.roblox} ROBLOX - ${userData.name}`).setThumbnail(avatarUrl).addFields(
+                        { name: 'ID', value: `\`${userId}\``, inline: true },
+                        { name: 'Kullanıcı', value: userData.name, inline: true },
+                        { name: 'Görünen Ad', value: userData.displayName || userData.name, inline: true },
+                        { name: 'Profil', value: `[Tıkla](https://www.roblox.com/users/${userId}/profile)`, inline: true },
+                        { name: 'Hesap Oluşturma', value: userData.created ? new Date(userData.created).toLocaleDateString('tr-TR') : 'Bilinmiyor', inline: true }
+                    ).setFooter({ text: `Roblox ${EMOJI.trbayrak}` });
                     await message.reply({ embeds: [embed] });
                 } catch (e) { message.reply(`${EMOJI.carpi} Roblox API hatası!`); }
                 return;
@@ -996,13 +970,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const data = await response.json();
                     if (!data || !data.id) return message.reply(`${EMOJI.carpi} Oyuncu bulunamadı.`);
                     const uuid = data.id;
-                    const embed = new EmbedBuilder()
-                        .setColor(0x00B2FF)
-                        .setTitle(`${EMOJI.minecraft} MINECRAFT - ${data.name}`)
-                        .setDescription(`**Oyuncu:** ${data.name}\n**UUID:** \`${uuid}\``)
-                        .setThumbnail(`https://api.fadehost.com/api/minecraft/skin/body/256/${uuid}.png`)
-                        .setImage(`https://crafatar.com/renders/body/${uuid}?overlay=true`)
-                        .setFooter({ text: `Minecraft ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x00B2FF).setTitle(`${EMOJI.minecraft} MINECRAFT - ${data.name}`).setDescription(`**Oyuncu:** ${data.name}\n**UUID:** \`${uuid}\``).setThumbnail(`https://api.fadehost.com/api/minecraft/skin/body/256/${uuid}.png`).setImage(`https://crafatar.com/renders/body/${uuid}?overlay=true`).setFooter({ text: `Minecraft ${EMOJI.trbayrak}` });
                     await message.reply({ embeds: [embed] });
                 } catch (e) { message.reply(`${EMOJI.carpi} Minecraft API hatası!`); }
                 return;
@@ -1037,19 +1005,14 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const data = await response.json();
                     const c = data[0];
                     const diller = c.languages ? Object.values(c.languages).join(', ') : 'Yok';
-                    const embed = new EmbedBuilder()
-                        .setColor(0x4FC3F7)
-                        .setTitle(`🌍 ${c.name.common}`)
-                        .setThumbnail(c.flags?.png || c.flags?.svg)
-                        .addFields(
-                            { name: 'Resmi Ad', value: c.name.official || c.name.common, inline: true },
-                            { name: 'Başkent', value: c.capital?.[0] || 'Yok', inline: true },
-                            { name: 'Bölge', value: c.region || 'Yok', inline: true },
-                            { name: 'Nüfus', value: `\`${c.population.toLocaleString('tr-TR')}\``, inline: true },
-                            { name: 'Alan', value: `\`${c.area.toLocaleString('tr-TR')} km²\``, inline: true },
-                            { name: 'Diller', value: diller.slice(0, 100), inline: true }
-                        )
-                        .setFooter({ text: `REST Countries ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`🌍 ${c.name.common}`).setThumbnail(c.flags?.png || c.flags?.svg).addFields(
+                        { name: 'Resmi Ad', value: c.name.official || c.name.common, inline: true },
+                        { name: 'Başkent', value: c.capital?.[0] || 'Yok', inline: true },
+                        { name: 'Bölge', value: c.region || 'Yok', inline: true },
+                        { name: 'Nüfus', value: `\`${c.population.toLocaleString('tr-TR')}\``, inline: true },
+                        { name: 'Alan', value: `\`${c.area.toLocaleString('tr-TR')} km²\``, inline: true },
+                        { name: 'Diller', value: diller.slice(0, 100), inline: true }
+                    ).setFooter({ text: `REST Countries ${EMOJI.trbayrak}` });
                     await message.reply({ embeds: [embed] });
                 } catch (e) { message.reply(`${EMOJI.carpi} Ülke verisi alınamadı.`); }
                 return;
@@ -1062,11 +1025,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const response = await safeFetch(`https://api.nasa.gov/planetary/apod?api_key=${apiKey}`);
                     const data = await response.json();
                     if (data.error) return message.reply(`${EMOJI.carpi} NASA API hatası: ${data.error.message}`);
-                    const embed = new EmbedBuilder()
-                        .setColor(0x0B3D91)
-                        .setTitle(`${EMOJI.nasa} NASA - ${data.title}`)
-                        .setDescription(data.explanation ? data.explanation.slice(0, 1000) : 'Açıklama yok')
-                        .setFooter({ text: `NASA APOD ${EMOJI.trbayrak} • ${data.date}` });
+                    const embed = new EmbedBuilder().setColor(0x0B3D91).setTitle(`${EMOJI.nasa} NASA - ${data.title}`).setDescription(data.explanation ? data.explanation.slice(0, 1000) : 'Açıklama yok').setFooter({ text: `NASA APOD ${EMOJI.trbayrak} • ${data.date}` });
                     if (data.media_type === 'image') embed.setImage(data.url);
                     else if (data.media_type === 'video') embed.addFields({ name: '📺 Video', value: `[Tıkla](${data.url})` });
                     await message.reply({ embeds: [embed] });
@@ -1084,26 +1043,16 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 
                 try {
                     const startTime = Date.now();
-                    const response = await safeFetch(url, { 
-                        method: 'GET',
-                        headers: { 'User-Agent': 'Mozilla/5.0 (KALE Bot Scanner)' }
-                    }, 15000);
+                    const response = await safeFetch(url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 (UKRAYNAA Bot Scanner)' } }, 15000);
                     const sure = Date.now() - startTime;
                     const html = await response.text();
                     
-                    // Başlık
                     const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
                     const title = titleMatch ? titleMatch[1].trim().slice(0, 100) : 'Yok';
                     
-                    // Meta description
                     const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
                     const metaDesc = descMatch ? descMatch[1].trim().slice(0, 200) : 'Yok';
                     
-                    // Meta generator
-                    const genMatch = html.match(/<meta[^>]*name=["']generator["'][^>]*content=["']([^"']*)["']/i);
-                    const generator = genMatch ? genMatch[1].trim() : null;
-                    
-                    // Teknoloji tespiti
                     const teknolojiler = [];
                     if (html.includes('wp-content') || html.includes('wordpress')) teknolojiler.push('WordPress');
                     if (html.includes('react') || html.includes('__REACT')) teknolojiler.push('React');
@@ -1114,7 +1063,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     if (html.includes('jquery')) teknolojiler.push('jQuery');
                     if (response.headers.get('server')?.includes('cloudflare')) teknolojiler.push('Cloudflare');
                     
-                    // Güvenlik başlıkları
                     const guvenlik = {
                         hsts: response.headers.get('strict-transport-security') ? '✅' : '❌',
                         csp: response.headers.get('content-security-policy') ? '✅' : '❌',
@@ -1124,7 +1072,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         referrer: response.headers.get('referrer-policy') ? '✅' : '❌'
                     };
                     
-                    // robots.txt
                     let robotsInfo = 'Yok';
                     try {
                         const robotsRes = await safeFetch(new URL('/robots.txt', url).href, {}, 5000);
@@ -1134,7 +1081,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         }
                     } catch (e) {}
                     
-                    // sitemap.xml
                     let sitemapInfo = 'Yok';
                     try {
                         const sitemapRes = await safeFetch(new URL('/sitemap.xml', url).href, {}, 5000);
@@ -1145,7 +1091,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         }
                     } catch (e) {}
                     
-                    // OpenAPI/Swagger
                     let apiInfo = 'Bulunamadı';
                     const apiPaths = ['/openapi.json', '/swagger.json', '/api-docs', '/swagger-ui.html'];
                     for (const path of apiPaths) {
@@ -1176,7 +1121,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                             { name: '🗺️ sitemap.xml', value: `\`${sitemapInfo}\``, inline: true },
                             { name: '📚 OpenAPI/Swagger', value: apiInfo, inline: false }
                         )
-                        .setFooter({ text: `KALE ${EMOJI.trbayrak} • Sadece herkese açık bilgiler` })
+                        .setFooter({ text: `${FOOTER} • Sadece herkese açık bilgiler` })
                         .setTimestamp();
                     
                     await message.reply({ embeds: [embed] });
@@ -1194,15 +1139,10 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const metin = args.slice(2).join(' ');
                 
                 if (!altKomut) {
-                    const embed = new EmbedBuilder()
-                        .setColor(0x4FC3F7)
-                        .setTitle(`${EMOJI.encode} CIPHER KOMUTLARI`)
-                        .setDescription(`**Kullanım:**\n\`k!cipher encode base64 <metin>\`\n\`k!cipher decode base64 <metin>\`\n\`k!cipher hash <metin>\`\n\`k!cipher timestamp\``)
-                        .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.encode} CIPHER KOMUTLARI`).setDescription(`**Kullanım:**\n\`k!cipher encode base64 <metin>\`\n\`k!cipher decode base64 <metin>\`\n\`k!cipher hash <metin>\`\n\`k!cipher timestamp\``).setFooter({ text: FOOTER });
                     return message.reply({ embeds: [embed] });
                 }
                 
-                // ENCODE
                 if (altKomut === 'encode') {
                     if (!tip || !metin) return message.reply(`${EMOJI.carpi} Kullanım: \`k!cipher encode base64 <metin>\``);
                     let sonuc = '';
@@ -1212,18 +1152,13 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     else if (tip === 'binary') sonuc = metin.split('').map(c => c.charCodeAt(0).toString(2).padStart(8, '0')).join(' ');
                     else return message.reply(`${EMOJI.carpi} Desteklenen tipler: \`base64\`, \`hex\`, \`url\`, \`binary\``);
                     
-                    const embed = new EmbedBuilder()
-                        .setColor(0x00FF00)
-                        .setTitle(`${EMOJI.encode} ENCODE - ${tip.toUpperCase()}`)
-                        .addFields(
-                            { name: '📥 Girdi', value: `\`\`\`${metin.slice(0, 500)}\`\`\`` },
-                            { name: '📤 Sonuç', value: `\`\`\`${sonuc.slice(0, 1000)}\`\`\`` }
-                        )
-                        .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x00FF00).setTitle(`${EMOJI.encode} ENCODE - ${tip.toUpperCase()}`).addFields(
+                        { name: '📥 Girdi', value: `\`\`\`${metin.slice(0, 500)}\`\`\`` },
+                        { name: '📤 Sonuç', value: `\`\`\`${sonuc.slice(0, 1000)}\`\`\`` }
+                    ).setFooter({ text: FOOTER });
                     return message.reply({ embeds: [embed] });
                 }
                 
-                // DECODE
                 if (altKomut === 'decode') {
                     if (!tip || !metin) return message.reply(`${EMOJI.carpi} Kullanım: \`k!cipher decode base64 <metin>\``);
                     try {
@@ -1234,21 +1169,16 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         else if (tip === 'binary') sonuc = metin.split(' ').map(b => String.fromCharCode(parseInt(b, 2))).join('');
                         else return message.reply(`${EMOJI.carpi} Desteklenen tipler: \`base64\`, \`hex\`, \`url\`, \`binary\``);
                         
-                        const embed = new EmbedBuilder()
-                            .setColor(0x00FF00)
-                            .setTitle(`${EMOJI.decode} DECODE - ${tip.toUpperCase()}`)
-                            .addFields(
-                                { name: '📥 Girdi', value: `\`\`\`${metin.slice(0, 500)}\`\`\`` },
-                                { name: '📤 Sonuç', value: `\`\`\`${sonuc.slice(0, 1000)}\`\`\`` }
-                            )
-                            .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                        const embed = new EmbedBuilder().setColor(0x00FF00).setTitle(`${EMOJI.decode} DECODE - ${tip.toUpperCase()}`).addFields(
+                            { name: '📥 Girdi', value: `\`\`\`${metin.slice(0, 500)}\`\`\`` },
+                            { name: '📤 Sonuç', value: `\`\`\`${sonuc.slice(0, 1000)}\`\`\`` }
+                        ).setFooter({ text: FOOTER });
                         return message.reply({ embeds: [embed] });
                     } catch (e) {
                         return message.reply(`${EMOJI.carpi} Decode başarısız: \`${e.message}\``);
                     }
                 }
                 
-                // HASH
                 if (altKomut === 'hash') {
                     const hashMetin = args.slice(1).join(' ');
                     if (!hashMetin) return message.reply(`${EMOJI.carpi} Kullanım: \`k!cipher hash <metin>\``);
@@ -1256,37 +1186,28 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const sha1 = crypto.createHash('sha1').update(hashMetin).digest('hex');
                     const sha256 = crypto.createHash('sha256').update(hashMetin).digest('hex');
                     const sha512 = crypto.createHash('sha512').update(hashMetin).digest('hex');
-                    const embed = new EmbedBuilder()
-                        .setColor(0x4FC3F7)
-                        .setTitle(`${EMOJI.encode} CIPHER - HASH`)
-                        .addFields(
-                            { name: 'MD5', value: `\`${md5}\`` },
-                            { name: 'SHA1', value: `\`${sha1}\`` },
-                            { name: 'SHA256', value: `\`${sha256}\`` },
-                            { name: 'SHA512', value: `\`${sha512}\`` }
-                        )
-                        .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.encode} CIPHER - HASH`).addFields(
+                        { name: 'MD5', value: `\`${md5}\`` },
+                        { name: 'SHA1', value: `\`${sha1}\`` },
+                        { name: 'SHA256', value: `\`${sha256}\`` },
+                        { name: 'SHA512', value: `\`${sha512}\`` }
+                    ).setFooter({ text: FOOTER });
                     return message.reply({ embeds: [embed] });
                 }
                 
-                // TIMESTAMP
                 if (altKomut === 'timestamp' || altKomut === 'ts') {
                     const now = Math.floor(Date.now() / 1000);
-                    const embed = new EmbedBuilder()
-                        .setColor(0x4FC3F7)
-                        .setTitle(`${EMOJI.saat} CIPHER - TIMESTAMP`)
-                        .setDescription(`**Saniye:** \`${now}\`\n**Milisaniye:** \`${Date.now()}\`\n**Discord:** \`<t:${now}:f>\` → <t:${now}:f>\n**Discord (R):** \`<t:${now}:R>\` → <t:${now}:R>`)
-                        .setFooter({ text: `KALE ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.saat} CIPHER - TIMESTAMP`).setDescription(`**Saniye:** \`${now}\`\n**Milisaniye:** \`${Date.now()}\`\n**Discord:** \`<t:${now}:f>\` → <t:${now}:f>\n**Discord (R):** \`<t:${now}:R>\` → <t:${now}:R>`).setFooter({ text: FOOTER });
                     return message.reply({ embeds: [embed] });
                 }
                 
                 return message.reply(`${EMOJI.carpi} Bilinmeyen komut. \`k!cipher\` yaz.`);
             }
                         // ==================== YARDIM ====================
-            if (command === 'yardim' || command === 'yardim' || command === 'help') {
+            if (command === 'yardim' || command === 'yardım' || command === 'help') {
                 const embed = new EmbedBuilder()
                     .setColor(0xE30A17)
-                    .setTitle(`${EMOJI.kale} KALE BOT KOMUTLARI ${EMOJI.trbayrak}`)
+                    .setTitle(`${EMOJI.kale} UKRAYNAA BOT KOMUTLARI ${EMOJI.trbayrak}`)
                     .setDescription(`Merhaba **${message.author.username}**! 👋\nToplam **80+ komut** ile hizmetindeyim.\n\n📖 **Detaylı yardım için:** \`k!yardim <komut>\``)
                     .addFields(
                         { name: `${EMOJI.kalkan} MODERASYON (ADMIN)`, value: '`temizle` `kick` `ban` `unban` `uyar` `uyarılar` `sustur` `susturma-kaldır` `slowmode` `kanal-kilit` `kanal-aç`', inline: false },
@@ -1299,14 +1220,14 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         { name: `${EMOJI.encode} CIPHER & ARAÇLAR`, value: '`cipher encode base64 <metin>` `cipher decode base64 <metin>` `cipher hash <metin>` `cipher timestamp` `tarama <url>`', inline: false },
                         { name: `${EMOJI.ayarlar} YÖNETİM (ADMIN)`, value: '`yedek` `ayar aç/kapa/durum` `debug`', inline: false }
                     )
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak} • Toplam 80+ komut • İyi eğlenceler!` })
+                    .setFooter({ text: `${FOOTER} • Toplam 80+ komut • İyi eğlenceler!` })
                     .setTimestamp();
                 await message.reply({ embeds: [embed] });
                 return;
             }
 
             // ==================== DETAYLI YARDIM ====================
-            if ((command === 'yardim' || command === 'yardim') && args[0]) {
+            if ((command === 'yardim' || command === 'yardım') && args[0]) {
                 const arananKomut = args[0].toLowerCase();
                 const komutBilgileri = {
                     'apoyabas': { aciklama: 'Apo sayacını arttırır.', kullanim: 'k!apoyabas' },
@@ -1344,7 +1265,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         { name: '📝 Açıklama', value: bilgi.aciklama, inline: false },
                         { name: '💡 Kullanım', value: `\`${bilgi.kullanim}\``, inline: false }
                     )
-                    .setFooter({ text: `KALE ${EMOJI.trbayrak} • k!yardim <komut>` })
+                    .setFooter({ text: `${FOOTER} • k!yardim <komut>` })
                     .setTimestamp();
                 await message.reply({ embeds: [embed] });
                 return;
@@ -1373,12 +1294,12 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const davetEdilen = parts[3];
                 
                 if (interaction.user.id !== davetEdilen) {
-                    return interaction.reply({ content: `${EMOJI.carpi} Bu düello sana ait değil!`, ephemeral: true });
+                    return interaction.reply({ content: `${EMOJI.carpi} Bu düello sana ait değil!`, flags: EPHEMERAL });
                 }
                 
                 if (tip === 'red') {
                     return interaction.update({
-                        embeds: [new EmbedBuilder().setColor(0x2B2D31).setTitle(`${EMOJI.carpi} DÜELLO REDDEDİLDİ`).setDescription(`**${interaction.user.username}** düelloyu reddetti.`).setFooter({ text: `KALE ${EMOJI.trbayrak}` })],
+                        embeds: [new EmbedBuilder().setColor(0x2B2D31).setTitle(`${EMOJI.carpi} DÜELLO REDDEDİLDİ`).setDescription(`**${interaction.user.username}** düelloyu reddetti.`).setFooter({ text: FOOTER })],
                         components: []
                     });
                 }
@@ -1392,7 +1313,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         .setColor(0xFFD700)
                         .setTitle(`${EMOJI.kazanan} DÜELLO SONUCU ${EMOJI.kazanan}`)
                         .setDescription(`⚔️ **${kazananUser?.username || 'Bilinmiyor'}** kazandı!\n\n💀 **${kaybedenUser?.username || 'Bilinmiyor'}** kaybetti!`)
-                        .setFooter({ text: `KALE ${EMOJI.trbayrak}` })
+                        .setFooter({ text: FOOTER })
                         .setTimestamp();
                     
                     return interaction.update({ embeds: [embed], components: [] });
