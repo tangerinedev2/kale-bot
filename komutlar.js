@@ -343,7 +343,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const target = message.guild.members.cache.get(user.id);
                 if (!target) return message.reply(`${EMOJI.carpi} Kullanıcı bulunamadı!`);
                 const sure = parseInt(args[1]) || 10;
-                const reason = args.slice(PREFIX.length).join(' ') || 'Sebep yok';
+                const reason = args.slice(2).join(' ') || 'Sebep yok';
                 try {
                     await target.timeout(sure * 60 * 1000, reason);
                     db.addModeration(user.id, 'timeout', reason, sure, message.author.tag, message.author.id);
@@ -1137,7 +1137,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             if (command === 'cipher') {
                 const altKomut = args[0]?.toLowerCase();
                 const tip = args[1]?.toLowerCase();
-                const metin = args.slice(PREFIX.length).join(' ');
+                const metin = args.slice(3).join(' ');
                 
                 if (!altKomut) {
                     const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.encode} CIPHER KOMUTLARI`).setDescription(`**Kullanım:**\n\`${PREFIX}cipher encode base64 <metin>\`\n\`${PREFIX}cipher decode base64 <metin>\`\n\`${PREFIX}cipher hash <metin>\`\n\`${PREFIX}cipher timestamp\``).setFooter({ text: FOOTER });
@@ -1181,7 +1181,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 }
                 
                 if (altKomut === 'hash') {
-                    const hashMetin = args.slice(1).join(' ');
+                    const hashMetin = args.slice(2).join(' ');
                     if (!hashMetin) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}cipher hash <metin>\``);
                     const md5 = crypto.createHash('md5').update(hashMetin).digest('hex');
                     const sha1 = crypto.createHash('sha1').update(hashMetin).digest('hex');
@@ -1231,31 +1231,31 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             if ((command === 'yardim' || command === 'yardım') && args[0]) {
                 const arananKomut = args[0].toLowerCase();
                 const komutBilgileri = {
-                    'apoyabas': { aciklama: 'Apo sayacını arttırır.', kullanim: 'k!apoyabas' },
-                    'milyoner': { aciklama: '13 soruluk bilgi yarışması başlatır.', kullanim: 'k!milyoner' },
-                    'rusruleti': { aciklama: 'Rus ruleti oynar (istatistikli).', kullanim: 'k!rusruleti' },
-                    'ship': { aciklama: 'İki kişi arasında aşk ölçer.', kullanim: 'k!ship @kullanıcı' },
-                    '1vs1': { aciklama: 'Düello başlatır.', kullanim: 'k!1vs1 @kullanıcı' },
-                    'temizle': { aciklama: 'Belirtilen sayıda mesaj siler.', kullanim: 'k!temizle <1-100>' },
-                    'kick': { aciklama: 'Kullanıcıyı sunucudan atar.', kullanim: 'k!kick @kullanıcı [sebep]' },
-                    'ban': { aciklama: 'Kullanıcıyı sunucudan yasaklar.', kullanim: 'k!ban @kullanıcı [sebep]' },
-                    'uyar': { aciklama: 'Kullanıcıya uyarı verir.', kullanim: 'k!uyar @kullanıcı [sebep]' },
-                    'hava': { aciklama: 'Belirtilen şehrin hava durumunu gösterir.', kullanim: 'k!hava [şehir]' },
-                    'döviz': { aciklama: 'Güncel döviz kurlarını gösterir.', kullanim: 'k!döviz' },
-                    'kripto': { aciklama: 'Güncel kripto para fiyatlarını gösterir.', kullanim: 'k!kripto' },
-                    'wiki': { aciklama: 'Wikipedia\'dan bilgi getirir.', kullanim: 'k!wiki <konu>' },
-                    'github': { aciklama: 'GitHub kullanıcı bilgilerini gösterir.', kullanim: 'k!github <kullanıcı>' },
-                    'roblox': { aciklama: 'Roblox kullanıcı bilgilerini gösterir.', kullanim: 'k!roblox <kullanıcı>' },
-                    'minecraft': { aciklama: 'Minecraft oyuncu bilgilerini gösterir.', kullanim: 'k!minecraft <oyuncu>' },
-                    'borsa': { aciklama: 'Hisse senedi fiyatını gösterir.', kullanim: 'k!borsa <sembol>' },
-                    'deprem': { aciklama: 'Son depremleri listeler.', kullanim: 'k!deprem' },
-                    'ülke': { aciklama: 'Ülke bilgilerini gösterir.', kullanim: 'k!ülke <ülke>' },
-                    'nasa': { aciklama: 'NASA APOD fotoğrafını gösterir.', kullanim: 'k!nasa' },
-                    'banner': { aciklama: 'Kullanıcının banner\'ını gösterir.', kullanim: 'k!banner [@kullanıcı]' },
-                    'cipher': { aciklama: 'Encode/decode/hash/timestamp yapar.', kullanim: 'k!cipher encode/decode/hash/timestamp' },
-                    'tarama': { aciklama: 'Bir siteyi güvenlik açısından tarar.', kullanim: 'k!tarama <url>' },
-                    'profil': { aciklama: 'Kullanıcı profilini gösterir.', kullanim: 'k!profil [@kullanıcı]' },
-                    'atam': { aciklama: 'Rastgele Atatürk fotoğrafı ve sözü gönderir.', kullanim: 'k!atam' }
+                    'apoyabas': { aciklama: 'Apo sayacını arttırır.', kullanim: `${PREFIX}apoyabas` },
+                    'milyoner': { aciklama: '13 soruluk bilgi yarışması başlatır.', kullanim: `${PREFIX}milyoner` },
+                    'rusruleti': { aciklama: 'Rus ruleti oynar (istatistikli).', kullanim: `${PREFIX}rusruleti` },
+                    'ship': { aciklama: 'İki kişi arasında aşk ölçer.', kullanim: `${PREFIX}ship @kullanıcı` },
+                    '1vs1': { aciklama: 'Düello başlatır.', kullanim: `${PREFIX}1vs1 @kullanıcı` },
+                    'temizle': { aciklama: 'Belirtilen sayıda mesaj siler.', kullanim: `${PREFIX}temizle <1-100>` },
+                    'kick': { aciklama: 'Kullanıcıyı sunucudan atar.', kullanim: `${PREFIX}kick @kullanıcı [sebep]` },
+                    'ban': { aciklama: 'Kullanıcıyı sunucudan yasaklar.', kullanim: `${PREFIX}ban @kullanıcı [sebep]` },
+                    'uyar': { aciklama: 'Kullanıcıya uyarı verir.', kullanim: `${PREFIX}uyar @kullanıcı [sebep]` },
+                    'hava': { aciklama: 'Belirtilen şehrin hava durumunu gösterir.', kullanim: `${PREFIX}hava [şehir]` },
+                    'döviz': { aciklama: 'Güncel döviz kurlarını gösterir.', kullanim: `${PREFIX}döviz` },
+                    'kripto': { aciklama: 'Güncel kripto para fiyatlarını gösterir.', kullanim: `${PREFIX}kripto` },
+                    'wiki': { aciklama: 'Wikipedia\'dan bilgi getirir.', kullanim: `${PREFIX}wiki <konu>` },
+                    'github': { aciklama: 'GitHub kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}github <kullanıcı>` },
+                    'roblox': { aciklama: 'Roblox kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}roblox <kullanıcı>` },
+                    'minecraft': { aciklama: 'Minecraft oyuncu bilgilerini gösterir.', kullanim: `${PREFIX}minecraft <oyuncu>` },
+                    'borsa': { aciklama: 'Hisse senedi fiyatını gösterir.', kullanim: `${PREFIX}borsa <sembol>` },
+                    'deprem': { aciklama: 'Son depremleri listeler.', kullanim: `${PREFIX}deprem` },
+                    'ülke': { aciklama: 'Ülke bilgilerini gösterir.', kullanim: `${PREFIX}ülke <ülke>` },
+                    'nasa': { aciklama: 'NASA APOD fotoğrafını gösterir.', kullanim: `${PREFIX}nasa` },
+                    'banner': { aciklama: 'Kullanıcının banner\'ını gösterir.', kullanim: `${PREFIX}banner [@kullanıcı]` },
+                    'cipher': { aciklama: 'Encode/decode/hash/timestamp yapar.', kullanim: `${PREFIX}cipher encode/decode/hash/timestamp` },
+                    'tarama': { aciklama: 'Bir siteyi güvenlik açısından tarar.', kullanim: `${PREFIX}tarama <url>` },
+                    'profil': { aciklama: 'Kullanıcı profilini gösterir.', kullanim: `${PREFIX}profil [@kullanıcı]` },
+                    'atam': { aciklama: 'Rastgele Atatürk fotoğrafı ve sözü gönderir.', kullanim: `${PREFIX}atam` }
                 };
                 const bilgi = komutBilgileri[arananKomut];
                 if (!bilgi) return message.reply(`${EMOJI.carpi} **\`${arananKomut}\`** komutu hakkında bilgi bulunamadı!`);
@@ -1266,7 +1266,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         { name: '📝 Açıklama', value: bilgi.aciklama, inline: false },
                         { name: '💡 Kullanım', value: `\`${bilgi.kullanim}\``, inline: false }
                     )
-                    .setFooter({ text: `${FOOTER} • k!yardim <komut>` })
+                    .setFooter({ text: `${FOOTER} • ${PREFIX}yardim <komut>` })
                     .setTimestamp();
                 await message.reply({ embeds: [embed] });
                 return;
