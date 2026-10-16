@@ -35,6 +35,7 @@ const MEEM_KLASORU = path.join(__dirname, 'meem');
 const BAYRAK = '<a:trbayrak:1546565825304072365>';
 const YUKLENIYOR = '<a:yukleniyor:1547711418407583765>';
 const LOADING = YUKLENIYOR;
+const SILENT_FLAG = 4096; // SUPPRESS_NOTIFICATIONS
 
 const ADMIN_ONLY_COMMANDS = [
     'temizle', 'sil', 'kick', 'ban', 'unban',
@@ -214,7 +215,7 @@ function saveAktiflik() {}
 let aktiflik = {};
 function loadAktiflik() { aktiflik = {}; }
 
-// =========================== LOG ===========================
+// =========================== LOG (SILENT) ===========================
 async function logToChannel(guildId, embed, logType = null) {
     if (logType && !ayarlar[`log_${logType}`]) return;
     try {
@@ -222,8 +223,14 @@ async function logToChannel(guildId, embed, logType = null) {
         if (!guild) return;
         const channel = guild.channels.cache.get(LOG_CHANNEL_ID);
         if (!channel) return;
-        await channel.send({ embeds: [embed] });
-    } catch (e) {}
+        await channel.send({ embeds: [embed], flags: SILENT_FLAG });
+    } catch (e) { 
+        try {
+            const guild = client.guilds.cache.get(guildId);
+            const channel = guild?.channels?.cache?.get(LOG_CHANNEL_ID);
+            if (channel) await channel.send({ content: '@silent', embeds: [embed] });
+        } catch (err) {}
+    }
 }
 
 function createLogEmbed(title, description, color = 0x2B2D31, fields = [], user = null) {
@@ -237,11 +244,10 @@ function createLogEmbed(title, description, color = 0x2B2D31, fields = [], user 
         embed.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }));
         embed.setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ dynamic: true, size: 64 }) });
     }
-    // Boş alanları filtrele
-    const validFields = (fields || []).filter(f => f && f.name && f.value && f.value.length > 0);
+    const validFields = (fields || []).filter(f => f && f.name && f.value && String(f.value).length > 0);
     if (validFields.length > 0) {
         embed.addFields(validFields.map(f => ({
-            name: f.name,
+            name: String(f.name).slice(0, 256),
             value: String(f.value).slice(0, 1024) || '*(Boş)*',
             inline: f.inline || false
         })));
@@ -278,7 +284,7 @@ async function acilDurum(guild) {
                 .setDescription(`Sunucu kilitlendi, tüm rollerin yetkileri sıfırlandı.\n<@${ADMIN_ID}> adlı kullanıcıya **Acil Durum Yöneticisi** rolü verildi.`)
                 .setTimestamp()
                 .setFooter({ text: `UKRAYNAA Acil Durum ${BAYRAK}` });
-            await logChannel.send({ embeds: [embed] });
+            await logChannel.send({ embeds: [embed], flags: SILENT_FLAG });
         }
         return true;
     } catch (e) { console.error('Acil durum hatası:', e); return false; }
@@ -459,10 +465,13 @@ client.on('guildMemberAdd', async (member) => {
         );
         await channel.send({ embeds: [embed], components: [row] });
     }
-    await logToChannel(member.guild.id, createLogEmbed('ÜYE KATILDI', `**${member.user.tag}** katıldı.`, 0x00FF00, [
-        { name: 'Kullanıcı', value: `\`${member.user.tag}\``, inline: true },
-        { name: 'ID', value: `\`${member.id}\``, inline: true },
-        { name: 'Toplam', value: `\`${member.guild.memberCount}\``, inline: true }
+    await logToChannel(member.guild.id, createLogEmbed('ÜYE KATILDI', `**${member.user.tag}** sunucuya katıldı.`, 0x00FF00, [
+        { name: 'Kullanıcı', value: `${member.user} (\`${member.id}\`)`, inline: true },
+        { name: 'Kullanıcı Adı', value: `\`${member.user.tag}\``, inline: true },
+        { name: 'Hesap Oluşturma', value: `<t:${Math.floor(member.user.createdTimestamp/1000)}:f>`, inline: true },
+        { name: 'Sunucuya Katılma', value: `<t:${Math.floor(member.joinedTimestamp/1000)}:f>`, inline: true },
+        { name: 'Toplam Üye', value: `\`${member.guild.memberCount}\``, inline: true },
+        { name: 'Bot mu?', value: member.user.bot ? 'Evet' : 'Hayır', inline: true }
     ], member.user), 'uye_katil');
 });
 
@@ -481,9 +490,12 @@ client.on('guildMemberRemove', async (member) => {
             .setTimestamp();
         await channel.send({ embeds: [embed] });
     }
-    await logToChannel(member.guild.id, createLogEmbed('ÜYE AYRILDI', `**${member.user.tag}** ayrıldı.`, 0xFF0000, [
-        { name: 'Kullanıcı', value: `\`${member.user.tag}\``, inline: true },
-        { name: 'ID', value: `\`${member.id}\``, inline: true }
+    await logToChannel(member.guild.id, createLogEmbed('ÜYE AYRILDI', `**${member.user.tag}** sunucudan ayrıldı.`, 0xFF0000, [
+        { name: 'Kullanıcı', value: `${member.user} (\`${member.id}\`)`, inline: true },
+        { name: 'Kullanıcı Adı', value: `\`${member.user.tag}\``, inline: true },
+        { name: 'Katılma Tarihi', value: member.joinedAt ? `<t:${Math.floor(member.joinedTimestamp/1000)}:f>` : 'Bilinmiyor', inline: true },
+        { name: 'Roller', value: member.roles.cache.filter(r => r.name !== '@everyone').map(r => r.name).join(', ').slice(0, 500) || 'Yok', inline: false },
+        { name: 'Kalan Üye', value: `\`${member.guild.memberCount}\``, inline: true }
     ], member.user), 'uye_ayril');
 });
 
@@ -493,9 +505,11 @@ client.on('messageDelete', async (message) => {
     if (message.author?.bot || message.partial) return;
     const icerik = message.content && message.content.length > 0 ? message.content : '*(Boş veya resim/dosya)*';
     await logToChannel(message.guild.id, createLogEmbed('MESAJ SİLİNDİ', `**${message.author.tag}** bir mesaj sildi.`, 0xFF0000, [
-        { name: 'Kullanıcı', value: `\`${message.author.tag}\``, inline: true },
-        { name: 'Kanal', value: `<#${message.channel.id}>`, inline: true },
-        { name: 'İçerik', value: `\`\`\`${icerik.slice(0, 500)}\`\`\`` }
+        { name: 'Kullanıcı', value: `${message.author} (\`${message.author.id}\`)`, inline: true },
+        { name: 'Kullanıcı Adı', value: `\`${message.author.tag}\``, inline: true },
+        { name: 'Kanal', value: `${message.channel} (\`${message.channel.id}\`)`, inline: true },
+        { name: 'Mesaj ID', value: `\`${message.id}\``, inline: true },
+        { name: 'İçerik', value: `\`\`\`${icerik.slice(0, 900)}\`\`\`` }
     ], message.author), 'mesaj_sil');
 });
 
@@ -507,10 +521,12 @@ client.on('messageUpdate', async (oldM, newM) => {
     const eski = oldM.content && oldM.content.length > 0 ? oldM.content : '*(Boş)*';
     const yeni = newM.content && newM.content.length > 0 ? newM.content : '*(Boş)*';
     await logToChannel(oldM.guild.id, createLogEmbed('MESAJ DÜZENLENDİ', `**${oldM.author.tag}** bir mesajı düzenledi.`, 0xFFA500, [
-        { name: 'Kullanıcı', value: `\`${oldM.author.tag}\``, inline: true },
-        { name: 'Kanal', value: `<#${oldM.channel.id}>`, inline: true },
-        { name: 'Eski', value: `\`\`\`${eski.slice(0, 300)}\`\`\`` },
-        { name: 'Yeni', value: `\`\`\`${yeni.slice(0, 300)}\`\`\`` }
+        { name: 'Kullanıcı', value: `${oldM.author} (\`${oldM.author.id}\`)`, inline: true },
+        { name: 'Kullanıcı Adı', value: `\`${oldM.author.tag}\``, inline: true },
+        { name: 'Kanal', value: `${oldM.channel} (\`${oldM.channel.id}\`)`, inline: true },
+        { name: 'Mesaj ID', value: `\`${oldM.id}\``, inline: true },
+        { name: 'Eski İçerik', value: `\`\`\`${eski.slice(0, 500)}\`\`\`` },
+        { name: 'Yeni İçerik', value: `\`\`\`${yeni.slice(0, 500)}\`\`\`` }
     ], oldM.author), 'mesaj_duzenle');
 });
 
@@ -527,8 +543,9 @@ client.on('guildMemberUpdate', async (oldM, newM) => {
             if (role) db.addRoleHistory(oldM.id, roleId, role.name, 'add', '', '');
         }
         await logToChannel(oldM.guild.id, createLogEmbed('ROL EKLENDİ', `**${oldM.user.tag}** kullanıcısına rol eklendi.`, 0x00FF00, [
-            { name: 'Kullanıcı', value: `\`${oldM.user.tag}\``, inline: true },
-            { name: 'Rol', value: added.map(id => `<@&${id}>`).join(', '), inline: true }
+            { name: 'Kullanıcı', value: `${oldM.user} (\`${oldM.id}\`)`, inline: true },
+            { name: 'Kullanıcı Adı', value: `\`${oldM.user.tag}\``, inline: true },
+            { name: 'Eklenen Rol(ler)', value: added.map(id => `<@&${id}>`).join(', ').slice(0, 500), inline: false }
         ], oldM.user), 'rol');
     }
     if (removed.length > 0) {
@@ -537,34 +554,75 @@ client.on('guildMemberUpdate', async (oldM, newM) => {
             if (role) db.addRoleHistory(oldM.id, roleId, role.name, 'remove', '', '');
         }
         await logToChannel(oldM.guild.id, createLogEmbed('ROL ALINDI', `**${oldM.user.tag}** kullanıcısından rol alındı.`, 0xFF0000, [
-            { name: 'Kullanıcı', value: `\`${oldM.user.tag}\``, inline: true },
-            { name: 'Rol', value: removed.map(id => `<@&${id}>`).join(', '), inline: true }
+            { name: 'Kullanıcı', value: `${oldM.user} (\`${oldM.id}\`)`, inline: true },
+            { name: 'Kullanıcı Adı', value: `\`${oldM.user.tag}\``, inline: true },
+            { name: 'Alınan Rol(ler)', value: removed.map(id => `<@&${id}>`).join(', ').slice(0, 500), inline: false }
         ], oldM.user), 'rol');
     }
     if (oldM.nickname !== newM.nickname) {
         db.addNicknameHistory(oldM.id, oldM.nickname, newM.nickname);
         await logToChannel(oldM.guild.id, createLogEmbed('NICK DEĞİŞTİ', `**${oldM.user.tag}** nick değiştirdi.`, 0xFFA500, [
-            { name: 'Kullanıcı', value: `\`${oldM.user.tag}\``, inline: true },
-            { name: 'Eski', value: `\`${oldM.nickname || 'Yok'}\``, inline: true },
-            { name: 'Yeni', value: `\`${newM.nickname || 'Yok'}\``, inline: true }
+            { name: 'Kullanıcı', value: `${oldM.user} (\`${oldM.id}\`)`, inline: true },
+            { name: 'Kullanıcı Adı', value: `\`${oldM.user.tag}\``, inline: true },
+            { name: 'Eski Nick', value: `\`${oldM.nickname || 'Yok'}\``, inline: true },
+            { name: 'Yeni Nick', value: `\`${newM.nickname || 'Yok'}\``, inline: true }
         ], oldM.user), 'nick');
+    }
+    // Timeout kontrolü
+    if (!oldM.communicationDisabledUntil && newM.communicationDisabledUntil) {
+        await logToChannel(GUILD_ID, createLogEmbed('ÜYE SUSTURULDU', `**${newM.user.tag}** susturuldu.`, 0xFF0000, [
+            { name: 'Kullanıcı', value: `${newM.user} (\`${newM.id}\`)`, inline: true },
+            { name: 'Bitiş', value: `<t:${Math.floor(newM.communicationDisabledUntilTimestamp/1000)}:f>`, inline: true }
+        ], newM.user), 'timeout');
+    } else if (oldM.communicationDisabledUntil && !newM.communicationDisabledUntil) {
+        await logToChannel(GUILD_ID, createLogEmbed('ÜYE SUSTURMASI KALDIRILDI', `**${newM.user.tag}** susturması kaldırıldı.`, 0x00FF00, [
+            { name: 'Kullanıcı', value: `${newM.user} (\`${newM.id}\`)`, inline: true }
+        ], newM.user), 'timeout');
     }
 });
 
 // =========================== PRESENCE ===========================
 client.on('presenceUpdate', async (oldP, newP) => {
     if (!newP || newP.guild.id !== GUILD_ID || newP.user.bot) return;
-    if (oldP?.status !== newP.status) db.addStatusHistory(newP.user.id, oldP?.status || 'offline', newP.status);
+    if (oldP?.status !== newP.status) {
+        db.addStatusHistory(newP.user.id, oldP?.status || 'offline', newP.status);
+        await logToChannel(GUILD_ID, createLogEmbed('DURUM DEĞİŞTİ', `**${newP.user.tag}** durumunu değiştirdi.`, 0x4FC3F7, [
+            { name: 'Kullanıcı', value: `${newP.user} (\`${newP.user.id}\`)`, inline: true },
+            { name: 'Eski Durum', value: `\`${oldP?.status || 'offline'}\``, inline: true },
+            { name: 'Yeni Durum', value: `\`${newP.status}\``, inline: true }
+        ], newP.user), 'durum');
+    }
     const oldA = oldP?.activities[0];
     const newA = newP.activities[0];
-    if (oldA?.name !== newA?.name) db.addActivityHistory(newP.user.id, oldA?.name || null, newA?.name || null);
+    if (oldA?.name !== newA?.name) {
+        db.addActivityHistory(newP.user.id, oldA?.name || null, newA?.name || null);
+        await logToChannel(GUILD_ID, createLogEmbed('AKTİVİTE DEĞİŞTİ', `**${newP.user.tag}** aktivitesini değiştirdi.`, 0x4FC3F7, [
+            { name: 'Kullanıcı', value: `${newP.user} (\`${newP.user.id}\`)`, inline: true },
+            { name: 'Eski Aktivite', value: `\`${oldA?.name || 'Yok'}\``, inline: true },
+            { name: 'Yeni Aktivite', value: `\`${newA?.name || 'Yok'}\``, inline: true }
+        ], newP.user), 'aktivite');
+    }
 });
 
 // =========================== USER UPDATE ===========================
 client.on('userUpdate', async (oldU, newU) => {
     if (newU.bot) return;
-    if (oldU.displayAvatarURL() !== newU.displayAvatarURL()) db.addAvatarHistory(newU.id, oldU.displayAvatarURL(), newU.displayAvatarURL());
-    if (oldU.username !== newU.username) db.addUsernameHistory(newU.id, oldU.username, newU.username);
+    if (oldU.displayAvatarURL() !== newU.displayAvatarURL()) {
+        db.addAvatarHistory(newU.id, oldU.displayAvatarURL(), newU.displayAvatarURL());
+        await logToChannel(GUILD_ID, createLogEmbed('AVATAR DEĞİŞTİ', `**${newU.tag}** avatarını değiştirdi.`, 0x4FC3F7, [
+            { name: 'Kullanıcı', value: `${newU} (\`${newU.id}\`)`, inline: true },
+            { name: 'Eski Avatar', value: `[Tıkla](${oldU.displayAvatarURL()})`, inline: true },
+            { name: 'Yeni Avatar', value: `[Tıkla](${newU.displayAvatarURL()})`, inline: true }
+        ], newU), 'profil');
+    }
+    if (oldU.username !== newU.username) {
+        db.addUsernameHistory(newU.id, oldU.username, newU.username);
+        await logToChannel(GUILD_ID, createLogEmbed('KULLANICI ADI DEĞİŞTİ', `**${oldU.tag}** kullanıcı adını değiştirdi.`, 0x4FC3F7, [
+            { name: 'Kullanıcı', value: `${newU} (\`${newU.id}\`)`, inline: true },
+            { name: 'Eski Ad', value: `\`${oldU.username}\``, inline: true },
+            { name: 'Yeni Ad', value: `\`${newU.username}\``, inline: true }
+        ], newU), 'profil');
+    }
 });
 
 // =========================== TEPKİLER ===========================
@@ -574,6 +632,12 @@ client.on('messageReactionAdd', async (reaction, user) => {
     if (reaction.message.partial) { try { await reaction.message.fetch(); } catch (e) { return; } }
     db.addReactionGiven(user.id, reaction.emoji.name, reaction.message.author?.username || '', reaction.message.channel.id, reaction.message.channel.name);
     if (reaction.message.author && !reaction.message.author.bot) db.addReactionReceived(reaction.message.author.id, reaction.emoji.name, user.id, user.username, reaction.message.channel.id, reaction.message.channel.name);
+    await logToChannel(GUILD_ID, createLogEmbed('TEPKİ EKLENDİ', `**${user.tag}** bir mesaja tepki ekledi.`, 0x4FC3F7, [
+        { name: 'Kullanıcı', value: `${user} (\`${user.id}\`)`, inline: true },
+        { name: 'Emoji', value: `\`${reaction.emoji.name}\``, inline: true },
+        { name: 'Kanal', value: `${reaction.message.channel} (\`${reaction.message.channel.id}\`)`, inline: true },
+        { name: 'Mesaj Sahibi', value: reaction.message.author ? `${reaction.message.author} (\`${reaction.message.author.id}\`)` : 'Bilinmiyor', inline: false }
+    ], user), 'tepki');
 });
 
 // =========================== SES ===========================
@@ -586,8 +650,8 @@ client.on('voiceStateUpdate', async (oldS, newS) => {
         db.addVoiceSession(userId, newS.channel.id, newS.channel.name, 'join', 0, new Date().toISOString(), '');
         trackActivity(userId, 'voice');
         await logToChannel(oldS.guild.id, createLogEmbed('SESE GİRDİ', `**${oldS.member.user.tag}** sese girdi.`, 0x00FF00, [
-            { name: 'Kullanıcı', value: `\`${oldS.member.user.tag}\``, inline: true },
-            { name: 'Kanal', value: `<#${newS.channel.id}>`, inline: true }
+            { name: 'Kullanıcı', value: `${oldS.member.user} (\`${oldS.member.id}\`)`, inline: true },
+            { name: 'Kanal', value: `${newS.channel} (\`${newS.channel.id}\`)`, inline: true }
         ], oldS.member.user), 'ses');
     }
     if (oldS.channel && !newS.channel) {
@@ -601,7 +665,8 @@ client.on('voiceStateUpdate', async (oldS, newS) => {
         db.incrementUserVoice(userId, duration);
         trackActivity(userId, 'voice');
         await logToChannel(oldS.guild.id, createLogEmbed('SESTEN ÇIKTI', `**${oldS.member.user.tag}** sesten çıktı.`, 0xFF0000, [
-            { name: 'Kullanıcı', value: `\`${oldS.member.user.tag}\``, inline: true },
+            { name: 'Kullanıcı', value: `${oldS.member.user} (\`${oldS.member.id}\`)`, inline: true },
+            { name: 'Kanal', value: `${oldS.channel} (\`${oldS.channel.id}\`)`, inline: true },
             { name: 'Süre', value: `\`${duration} dakika\``, inline: true }
         ], oldS.member.user), 'ses');
     }
@@ -613,58 +678,111 @@ client.on('voiceStateUpdate', async (oldS, newS) => {
         db.addVoicePeriod(userId, oldS.channel.id, oldS.channel.name, startTime.toISOString(), endTime.toISOString(), duration, '');
         db.addVoiceSession(userId, newS.channel.id, newS.channel.name, 'switch', duration, '', '');
         voiceJoinTimes.set(userId, { start: Date.now(), channel: newS.channel.name, channelId: newS.channel.id });
+        await logToChannel(oldS.guild.id, createLogEmbed('SES KANALI DEĞİŞTİ', `**${oldS.member.user.tag}** ses kanalını değiştirdi.`, 0x4FC3F7, [
+            { name: 'Kullanıcı', value: `${oldS.member.user} (\`${oldS.member.id}\`)`, inline: true },
+            { name: 'Eski Kanal', value: `${oldS.channel} (\`${oldS.channel.id}\`)`, inline: true },
+            { name: 'Yeni Kanal', value: `${newS.channel} (\`${newS.channel.id}\`)`, inline: true }
+        ], oldS.member.user), 'ses');
     }
 });
 
-// =========================== SUNUCU/EMOJI/KANAL/ROL EVENT'LERİ ===========================
+// =========================== SUNUCU GÜNCELLENDİ ===========================
 client.on('guildUpdate', async (oldG, newG) => {
     if (oldG.id !== GUILD_ID) return;
     const changes = [];
-    if (oldG.name !== newG.name) changes.push(`İsim: \`${oldG.name}\` → \`${newG.name}\``);
-    if (oldG.iconURL() !== newG.iconURL()) changes.push(`İkon değişti`);
+    if (oldG.name !== newG.name) changes.push(`**İsim:** \`${oldG.name}\` → \`${newG.name}\``);
+    if (oldG.iconURL() !== newG.iconURL()) changes.push(`**İkon:** Değişti`);
+    if (oldG.bannerURL() !== newG.bannerURL()) changes.push(`**Banner:** Değişti`);
+    if (oldG.description !== newG.description) changes.push(`**Açıklama:** \`${oldG.description || 'Yok'}\` → \`${newG.description || 'Yok'}\``);
+    if (oldG.verificationLevel !== newG.verificationLevel) changes.push(`**Doğrulama:** \`${oldG.verificationLevel}\` → \`${newG.verificationLevel}\``);
     if (changes.length > 0) await logToChannel(GUILD_ID, createLogEmbed('SUNUCU GÜNCELLENDİ', `Sunucu ayarları güncellendi.`, 0x4FC3F7, [{ name: 'Değişiklikler', value: changes.join('\n') }], null), 'sunucu');
 });
 
+// =========================== EMOJI ===========================
 client.on('emojiCreate', async (emoji) => {
     if (emoji.guild.id !== GUILD_ID) return;
-    await logToChannel(GUILD_ID, createLogEmbed('EMOJİ OLUŞTURULDU', `**${emoji.name}** emojisi oluşturuldu.`, 0x00FF00, [{ name: 'Emoji', value: `${emoji} \`${emoji.name}\``, inline: true }], null), 'emoji');
+    await logToChannel(GUILD_ID, createLogEmbed('EMOJİ OLUŞTURULDU', `**${emoji.name}** emojisi oluşturuldu.`, 0x00FF00, [
+        { name: 'Emoji', value: `${emoji} \`${emoji.name}\``, inline: true },
+        { name: 'ID', value: `\`${emoji.id}\``, inline: true },
+        { name: 'Animasyonlu', value: emoji.animated ? 'Evet' : 'Hayır', inline: true }
+    ], null), 'emoji');
 });
 client.on('emojiUpdate', async (oldE, newE) => {
     if (oldE.guild.id !== GUILD_ID) return;
     if (oldE.name === newE.name) return;
-    await logToChannel(GUILD_ID, createLogEmbed('EMOJİ GÜNCELLENDİ', `**${oldE.name}** → **${newE.name}**`, 0xFFA500, [{ name: 'Eski', value: `\`${oldE.name}\``, inline: true }, { name: 'Yeni', value: `\`${newE.name}\``, inline: true }], null), 'emoji');
+    await logToChannel(GUILD_ID, createLogEmbed('EMOJİ GÜNCELLENDİ', `**${oldE.name}** → **${newE.name}**`, 0xFFA500, [
+        { name: 'Eski İsim', value: `\`${oldE.name}\``, inline: true },
+        { name: 'Yeni İsim', value: `\`${newE.name}\``, inline: true },
+        { name: 'ID', value: `\`${newE.id}\``, inline: true }
+    ], null), 'emoji');
 });
 client.on('emojiDelete', async (emoji) => {
     if (emoji.guild.id !== GUILD_ID) return;
-    await logToChannel(GUILD_ID, createLogEmbed('EMOJİ SİLİNDİ', `**${emoji.name}** emojisi silindi.`, 0xFF0000, [{ name: 'Emoji', value: `\`${emoji.name}\``, inline: true }], null), 'emoji');
+    await logToChannel(GUILD_ID, createLogEmbed('EMOJİ SİLİNDİ', `**${emoji.name}** emojisi silindi.`, 0xFF0000, [
+        { name: 'Emoji', value: `\`${emoji.name}\``, inline: true },
+        { name: 'ID', value: `\`${emoji.id}\``, inline: true },
+        { name: 'Animasyonlu', value: emoji.animated ? 'Evet' : 'Hayır', inline: true }
+    ], null), 'emoji');
 });
 
+// =========================== KANAL ===========================
 client.on('channelCreate', async (channel) => {
     if (channel.guild.id !== GUILD_ID) return;
-    await logToChannel(GUILD_ID, createLogEmbed('KANAL OLUŞTURULDU', `**${channel.name}** kanalı oluşturuldu.`, 0x00FF00, [{ name: 'Kanal', value: `${channel} \`${channel.name}\``, inline: true }], null), 'kanal');
+    await logToChannel(GUILD_ID, createLogEmbed('KANAL OLUŞTURULDU', `**${channel.name}** kanalı oluşturuldu.`, 0x00FF00, [
+        { name: 'Kanal', value: `${channel} \`${channel.name}\``, inline: true },
+        { name: 'ID', value: `\`${channel.id}\``, inline: true },
+        { name: 'Tip', value: `\`${channel.type}\``, inline: true }
+    ], null), 'kanal');
 });
 client.on('channelUpdate', async (oldC, newC) => {
     if (oldC.guild.id !== GUILD_ID) return;
-    if (oldC.name === newC.name) return;
-    await logToChannel(GUILD_ID, createLogEmbed('KANAL GÜNCELLENDİ', `**${newC.name}** kanalı güncellendi.`, 0xFFA500, [{ name: 'İsim', value: `\`${oldC.name}\` → \`${newC.name}\``, inline: true }], null), 'kanal');
+    const changes = [];
+    if (oldC.name !== newC.name) changes.push(`**İsim:** \`${oldC.name}\` → \`${newC.name}\``);
+    if (oldC.parentId !== newC.parentId) changes.push(`**Kategori:** \`${oldC.parent?.name || 'Yok'}\` → \`${newC.parent?.name || 'Yok'}\``);
+    if (oldC.position !== newC.position) changes.push(`**Pozisyon:** \`${oldC.position}\` → \`${newC.position}\``);
+    if (changes.length === 0) return;
+    await logToChannel(GUILD_ID, createLogEmbed('KANAL GÜNCELLENDİ', `${newC} kanalı güncellendi.`, 0xFFA500, [
+        { name: 'Kanal', value: `${newC} (\`${newC.id}\`)`, inline: true },
+        { name: 'Değişiklikler', value: changes.join('\n'), inline: false }
+    ], null), 'kanal');
 });
 client.on('channelDelete', async (channel) => {
     if (channel.guild.id !== GUILD_ID) return;
-    await logToChannel(GUILD_ID, createLogEmbed('KANAL SİLİNDİ', `**${channel.name}** kanalı silindi.`, 0xFF0000, [{ name: 'Kanal', value: `\`${channel.name}\``, inline: true }], null), 'kanal');
+    await logToChannel(GUILD_ID, createLogEmbed('KANAL SİLİNDİ', `**${channel.name}** kanalı silindi.`, 0xFF0000, [
+        { name: 'Kanal', value: `\`${channel.name}\``, inline: true },
+        { name: 'ID', value: `\`${channel.id}\``, inline: true },
+        { name: 'Tip', value: `\`${channel.type}\``, inline: true }
+    ], null), 'kanal');
 });
 
+// =========================== ROL ===========================
 client.on('roleCreate', async (role) => {
     if (role.guild.id !== GUILD_ID) return;
-    await logToChannel(GUILD_ID, createLogEmbed('ROL OLUŞTURULDU', `**${role.name}** rolü oluşturuldu.`, 0x00FF00, [{ name: 'Rol', value: `${role} \`${role.name}\``, inline: true }], null), 'rol_olustur');
+    await logToChannel(GUILD_ID, createLogEmbed('ROL OLUŞTURULDU', `**${role.name}** rolü oluşturuldu.`, 0x00FF00, [
+        { name: 'Rol', value: `${role} \`${role.name}\``, inline: true },
+        { name: 'ID', value: `\`${role.id}\``, inline: true },
+        { name: 'Renk', value: `\`${role.hexColor}\``, inline: true }
+    ], null), 'rol_olustur');
 });
 client.on('roleUpdate', async (oldR, newR) => {
     if (oldR.guild.id !== GUILD_ID) return;
-    if (oldR.name === newR.name && oldR.hexColor === newR.hexColor) return;
-    await logToChannel(GUILD_ID, createLogEmbed('ROL GÜNCELLENDİ', `**${newR.name}** rolü güncellendi.`, 0xFFA500, [{ name: 'Rol', value: `${newR}`, inline: true }], null), 'rol_guncelle');
+    const changes = [];
+    if (oldR.name !== newR.name) changes.push(`**İsim:** \`${oldR.name}\` → \`${newR.name}\``);
+    if (oldR.hexColor !== newR.hexColor) changes.push(`**Renk:** \`${oldR.hexColor}\` → \`${newR.hexColor}\``);
+    if (oldR.permissions.bitfield !== newR.permissions.bitfield) changes.push(`**İzinler:** Değişti`);
+    if (changes.length === 0) return;
+    await logToChannel(GUILD_ID, createLogEmbed('ROL GÜNCELLENDİ', `${newR} rolü güncellendi.`, 0xFFA500, [
+        { name: 'Rol', value: `${newR} (\`${newR.id}\`)`, inline: true },
+        { name: 'Değişiklikler', value: changes.join('\n'), inline: false }
+    ], null), 'rol_guncelle');
 });
 client.on('roleDelete', async (role) => {
     if (role.guild.id !== GUILD_ID) return;
-    await logToChannel(GUILD_ID, createLogEmbed('ROL SİLİNDİ', `**${role.name}** rolü silindi.`, 0xFF0000, [{ name: 'Rol', value: `\`${role.name}\``, inline: true }], null), 'rol_sil');
+    await logToChannel(GUILD_ID, createLogEmbed('ROL SİLİNDİ', `**${role.name}** rolü silindi.`, 0xFF0000, [
+        { name: 'Rol', value: `\`${role.name}\``, inline: true },
+        { name: 'ID', value: `\`${role.id}\``, inline: true },
+        { name: 'Renk', value: `\`${role.hexColor}\``, inline: true }
+    ], null), 'rol_sil');
 });
 
 // =========================== SA KOMUTU ===========================
@@ -725,7 +843,6 @@ process.on('unhandledRejection', e => {
     console.error('❌ Hata:', e);
     try { db.addErrorLog('unhandledRejection', e.message || String(e), e.stack || '', '', ''); } catch (err) {}
 });
-
 // =========================== SES FONKSİYONLARI ===========================
 async function returnToFixedChannel(guildId) {
     try {
@@ -736,7 +853,11 @@ async function returnToFixedChannel(guildId) {
         const mevcutBaglanti = getVoiceConnection(guildId);
         if (!mevcutBaglanti || mevcutBaglanti.joinConfig.channelId !== SABIT_SES_KANALI_ID) {
             if (mevcutBaglanti) mevcutBaglanti.destroy();
-            const connection = joinVoiceChannel({ channelId: hedefKanal.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+            const connection = joinVoiceChannel({
+                channelId: hedefKanal.id,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator,
+            });
             await entersState(connection, VoiceConnectionStatus.Ready, 15000);
         }
     } catch (e) {}
@@ -744,14 +865,21 @@ async function returnToFixedChannel(guildId) {
 
 async function playVideoWithAudio(guildId, channelId, textChannel, userId) {
     try {
-        if (!fs.existsSync(VIDEO_PATH)) { if (textChannel) textChannel.send(`${EMOJIS.carpi} **hitabe.mp4** bulunamadı!`); return false; }
+        if (!fs.existsSync(VIDEO_PATH)) {
+            if (textChannel) textChannel.send(`${EMOJIS.carpi} **hitabe.mp4** bulunamadı!`);
+            return false;
+        }
         const guild = client.guilds.cache.get(guildId);
         if (!guild) throw new Error('Sunucu yok');
         const voiceChannel = guild.channels.cache.get(channelId);
         if (!voiceChannel || voiceChannel.type !== 2) throw new Error('Kanal yok');
         const existingConnection = getVoiceConnection(guildId);
         if (existingConnection) existingConnection.destroy();
-        const connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+        const connection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: guild.id,
+            adapterCreator: guild.voiceAdapterCreator,
+        });
         await entersState(connection, VoiceConnectionStatus.Ready, 20000);
         const ffmpeg = spawn(ffmpegPath, ['-i', VIDEO_PATH, '-vn', '-acodec', 'pcm_s16le', '-ar', '48000', '-ac', '2', '-f', 's16le', '-loglevel', 'error', 'pipe:1']);
         const resource = createAudioResource(ffmpeg.stdout, { inputType: 'raw' });
@@ -760,25 +888,48 @@ async function playVideoWithAudio(guildId, channelId, textChannel, userId) {
         connection.subscribe(player);
         player.play(resource);
         if (textChannel) {
-            const embed = new EmbedBuilder().setColor(0xE30A17).setTitle('GENÇLİĞE HİTABE').setDescription(`🎥 **${voiceChannel.name}** kanalında çalınıyor...`).setFooter({ text: `UKRAYNAA ${BAYRAK}` }).setTimestamp();
+            const embed = new EmbedBuilder()
+                .setColor(0xE30A17)
+                .setTitle('GENÇLİĞE HİTABE')
+                .setDescription(`🎥 **${voiceChannel.name}** kanalında çalınıyor...`)
+                .setFooter({ text: `UKRAYNAA ${BAYRAK}` })
+                .setTimestamp();
             await textChannel.send({ embeds: [embed] });
         }
-        player.on(AudioPlayerStatus.Idle, () => { ffmpeg.kill(); connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
-        player.on('error', () => { ffmpeg.kill(); connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
+        player.on(AudioPlayerStatus.Idle, () => {
+            ffmpeg.kill();
+            connection.destroy();
+            setTimeout(() => returnToFixedChannel(guildId), 2000);
+        });
+        player.on('error', () => {
+            ffmpeg.kill();
+            connection.destroy();
+            setTimeout(() => returnToFixedChannel(guildId), 2000);
+        });
         return true;
-    } catch (e) { setTimeout(() => returnToFixedChannel(guildId), 2000); return false; }
+    } catch (e) {
+        setTimeout(() => returnToFixedChannel(guildId), 2000);
+        return false;
+    }
 }
 
 async function playIstiklal(guildId, channelId, textChannel, userId) {
     try {
-        if (!fs.existsSync(ISTIKLAL_PATH)) { if (textChannel) textChannel.send(`${EMOJIS.carpi} **istiklal.mp3** bulunamadı!`); return false; }
+        if (!fs.existsSync(ISTIKLAL_PATH)) {
+            if (textChannel) textChannel.send(`${EMOJIS.carpi} **istiklal.mp3** bulunamadı!`);
+            return false;
+        }
         const guild = client.guilds.cache.get(guildId);
         if (!guild) throw new Error('Sunucu yok');
         const voiceChannel = guild.channels.cache.get(channelId);
         if (!voiceChannel || voiceChannel.type !== 2) throw new Error('Kanal yok');
         const existingConnection = getVoiceConnection(guildId);
         if (existingConnection) existingConnection.destroy();
-        const connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+        const connection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId: guild.id,
+            adapterCreator: guild.voiceAdapterCreator,
+        });
         await entersState(connection, VoiceConnectionStatus.Ready, 20000);
         const resource = createAudioResource(ISTIKLAL_PATH);
         if (resource.volume) resource.volume.setVolume(audioSettings.volume / 100);
@@ -786,38 +937,68 @@ async function playIstiklal(guildId, channelId, textChannel, userId) {
         connection.subscribe(player);
         player.play(resource);
         if (textChannel) {
-            const embed = new EmbedBuilder().setColor(0xE30A17).setTitle('İSTİKLAL MARŞI').setDescription(`🎵 **${voiceChannel.name}** kanalında çalınıyor!`).setFooter({ text: `UKRAYNAA ${BAYRAK}` }).setTimestamp();
+            const embed = new EmbedBuilder()
+                .setColor(0xE30A17)
+                .setTitle('İSTİKLAL MARŞI')
+                .setDescription(`🎵 **${voiceChannel.name}** kanalında çalınıyor!`)
+                .setFooter({ text: `UKRAYNAA ${BAYRAK}` })
+                .setTimestamp();
             await textChannel.send({ embeds: [embed] });
         }
-        player.on(AudioPlayerStatus.Idle, () => { connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
-        player.on('error', () => { connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
+        player.on(AudioPlayerStatus.Idle, () => {
+            connection.destroy();
+            setTimeout(() => returnToFixedChannel(guildId), 2000);
+        });
+        player.on('error', () => {
+            connection.destroy();
+            setTimeout(() => returnToFixedChannel(guildId), 2000);
+        });
         return true;
-    } catch (e) { setTimeout(() => returnToFixedChannel(guildId), 2000); return false; }
+    } catch (e) {
+        setTimeout(() => returnToFixedChannel(guildId), 2000);
+        return false;
+    }
 }
 
 async function playCustomSound(guildId, channelId, textChannel, userId, filePath, fileName, bass = 0) {
     try {
-        if (!fs.existsSync(filePath)) { if (textChannel) textChannel.send(`${EMOJIS.carpi} **${fileName}** bulunamadı!`); return false; }
+        if (!fs.existsSync(filePath)) {
+            if (textChannel) textChannel.send(`${EMOJIS.carpi} **${fileName}** bulunamadı!`);
+            return false;
+        }
         const guild = client.guilds.cache.get(guildId);
         if (!guild) return false;
         const voiceChannel = guild.channels.cache.get(channelId);
         if (!voiceChannel || voiceChannel.type !== 2) return false;
         const humanCount = voiceChannel.members.filter(m => !m.user.bot).size;
-        if (humanCount === 0) { if (textChannel) textChannel.send(`${EMOJIS.carpi} Kanalda kimse yok!`); return false; }
+        if (humanCount === 0) {
+            if (textChannel) textChannel.send(`${EMOJIS.carpi} Kanalda kimse yok!`);
+            return false;
+        }
         let connection = getVoiceConnection(guildId);
         let isNew = false;
         if (!connection) {
-            connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+            connection = joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator,
+            });
             await entersState(connection, VoiceConnectionStatus.Ready, 15000);
             isNew = true;
         } else if (connection.joinConfig.channelId !== voiceChannel.id) {
             connection.destroy();
-            connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+            connection = joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator,
+            });
             await entersState(connection, VoiceConnectionStatus.Ready, 15000);
             isNew = true;
         }
         let ffmpegArgs = ['-i', filePath, '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'];
-        if (bass && bass !== 0) ffmpegArgs = ['-i', filePath, '-af', `bass=g=${bass}:f=100:w=0.8`, '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'];
+        if (bass && bass !== 0) {
+            ffmpegArgs = ['-i', filePath, '-af', `bass=g=${bass}:f=100:w=0.8`, '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'];
+        }
         const ffmpeg = spawn(ffmpegPath, ffmpegArgs);
         const resource = createAudioResource(ffmpeg.stdout, { inputType: 'raw', inlineVolume: true });
         resource.ffmpeg = ffmpeg;
@@ -826,20 +1007,39 @@ async function playCustomSound(guildId, channelId, textChannel, userId, filePath
         connection.subscribe(player);
         player.play(resource);
         if (textChannel) {
-            const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle('SES ÇALINIYOR').setDescription(`🔊 **${voiceChannel.name}** → **${fileName}**`).setFooter({ text: `UKRAYNAA ${BAYRAK}` }).setTimestamp();
+            const embed = new EmbedBuilder()
+                .setColor(0x4FC3F7)
+                .setTitle('SES ÇALINIYOR')
+                .setDescription(`🔊 **${voiceChannel.name}** → **${fileName}**`)
+                .setFooter({ text: `UKRAYNAA ${BAYRAK}` })
+                .setTimestamp();
             await textChannel.send({ embeds: [embed] });
         }
-        player.on(AudioPlayerStatus.Idle, () => { if (resource.ffmpeg) resource.ffmpeg.kill(); if (isNew) connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
-        player.on('error', () => { if (resource.ffmpeg) resource.ffmpeg.kill(); if (isNew) connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
+        player.on(AudioPlayerStatus.Idle, () => {
+            if (resource.ffmpeg) resource.ffmpeg.kill();
+            if (isNew) connection.destroy();
+            setTimeout(() => returnToFixedChannel(guildId), 2000);
+        });
+        player.on('error', () => {
+            if (resource.ffmpeg) resource.ffmpeg.kill();
+            if (isNew) connection.destroy();
+            setTimeout(() => returnToFixedChannel(guildId), 2000);
+        });
         return true;
-    } catch (e) { setTimeout(() => returnToFixedChannel(guildId), 2000); return false; }
+    } catch (e) {
+        setTimeout(() => returnToFixedChannel(guildId), 2000);
+        return false;
+    }
 }
 
 async function playJumpscare(guildId, channelId, targetUserId = null) {
     try {
         if (!JUMPSCARE_COOLDOWN.enabled) return false;
         const now = Date.now();
-        if (now - JUMPSCARE_COOLDOWN.lastReset > 86400000) { JUMPSCARE_COOLDOWN.count = 0; JUMPSCARE_COOLDOWN.lastReset = now; }
+        if (now - JUMPSCARE_COOLDOWN.lastReset > 86400000) {
+            JUMPSCARE_COOLDOWN.count = 0;
+            JUMPSCARE_COOLDOWN.lastReset = now;
+        }
         if (JUMPSCARE_COOLDOWN.count >= JUMPSCARE_COOLDOWN.maxPerDay) return false;
         const isWeb = targetUserId !== null;
         if (!isWeb && Math.random() > JUMPSCARE_COOLDOWN.chance) return false;
@@ -860,12 +1060,20 @@ async function playJumpscare(guildId, channelId, targetUserId = null) {
         let connection = getVoiceConnection(guildId);
         let isNew = false;
         if (!connection) {
-            connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+            connection = joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator,
+            });
             await entersState(connection, VoiceConnectionStatus.Ready, 15000);
             isNew = true;
         } else if (connection.joinConfig.channelId !== voiceChannel.id) {
             connection.destroy();
-            connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
+            connection = joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: guild.id,
+                adapterCreator: guild.voiceAdapterCreator,
+            });
             await entersState(connection, VoiceConnectionStatus.Ready, 15000);
             isNew = true;
         }
@@ -875,10 +1083,31 @@ async function playJumpscare(guildId, channelId, targetUserId = null) {
         const player = createAudioPlayer();
         connection.subscribe(player);
         player.play(resource);
-        player.on(AudioPlayerStatus.Idle, () => { if (isNew) setTimeout(() => { if (connection.state.status !== 'destroyed') connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 1000); }, 2000); else setTimeout(() => returnToFixedChannel(guildId), 1000); });
-        player.on('error', () => { if (isNew) setTimeout(() => { if (connection.state.status !== 'destroyed') connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 1000); }, 2000); else setTimeout(() => returnToFixedChannel(guildId), 1000); });
+        player.on(AudioPlayerStatus.Idle, () => {
+            if (isNew) {
+                setTimeout(() => {
+                    if (connection.state.status !== 'destroyed') connection.destroy();
+                    setTimeout(() => returnToFixedChannel(guildId), 1000);
+                }, 2000);
+            } else {
+                setTimeout(() => returnToFixedChannel(guildId), 1000);
+            }
+        });
+        player.on('error', () => {
+            if (isNew) {
+                setTimeout(() => {
+                    if (connection.state.status !== 'destroyed') connection.destroy();
+                    setTimeout(() => returnToFixedChannel(guildId), 1000);
+                }, 2000);
+            } else {
+                setTimeout(() => returnToFixedChannel(guildId), 1000);
+            }
+        });
         return true;
-    } catch (e) { setTimeout(() => returnToFixedChannel(guildId), 1000); return false; }
+    } catch (e) {
+        setTimeout(() => returnToFixedChannel(guildId), 1000);
+        return false;
+    }
 }
 
 client.login(token);
