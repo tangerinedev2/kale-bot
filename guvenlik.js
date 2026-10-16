@@ -1,8 +1,3 @@
-// ============================================================
-// UKRAYNAA GUARD BOT - SQLite Sürümü
-// Veri sahibi bot. Tüm veriler SQLite'ta.
-// ============================================================
-
 const { Client, GatewayIntentBits, Partials, EmbedBuilder, PermissionsBitField, AttachmentBuilder, SlashCommandBuilder, REST, Routes } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
 const fs = require('fs');
@@ -33,6 +28,166 @@ const EMOJIS = {
     kale: '<:KALE:1547935181430718516>'
 };
 
+// =========================== VERİ ===========================
+const GOZALTINDA_PATH = path.join(__dirname, 'gozaltinda.json');
+let gozaltinda = {};
+
+function loadGozaltinda() {
+    try {
+        if (fs.existsSync(GOZALTINDA_PATH)) {
+            gozaltinda = JSON.parse(fs.readFileSync(GOZALTINDA_PATH, 'utf8'));
+        } else {
+            fs.writeFileSync(GOZALTINDA_PATH, JSON.stringify({}, null, 2));
+        }
+    } catch (e) {
+        gozaltinda = {};
+    }
+}
+
+function saveGozaltinda() {
+    try {
+        fs.writeFileSync(GOZALTINDA_PATH, JSON.stringify(gozaltinda, null, 2));
+    } catch (e) {}
+}
+
+function addGozaltinda(userId, sebep, yetkili) {
+    gozaltinda[userId] = {
+        userId,
+        sebep: sebep || 'Belirtilmedi',
+        yetkili: yetkili || 'Bilinmiyor',
+        tarih: new Date().toISOString()
+    };
+    saveGozaltinda();
+}
+
+function removeGozaltinda(userId) {
+    delete gozaltinda[userId];
+    saveGozaltinda();
+}
+
+// =========================== KULLANICI LOG (SQLITE) ===========================
+function loadUserLogFromDB(userId) {
+    const database = db.getDB();
+    const user = db.getUser(userId);
+    const warns = db.getWarns(userId);
+    
+    const messages = database.prepare('SELECT * FROM messages WHERE userId = ? ORDER BY date DESC LIMIT 1000').all(userId).map(m => ({
+        id: m.messageId, channel: m.channelName, content: m.content, timestamp: m.date
+    }));
+    
+    const voiceSessions = database.prepare('SELECT * FROM voice_sessions WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(v => ({
+        channel: v.channelName, duration: v.duration, timestamp: v.date, type: v.type
+    }));
+    
+    const voicePeriods = database.prepare('SELECT * FROM voice_periods WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(v => ({
+        channel: v.channelName, formatted: v.formatted, timestamp: v.date
+    }));
+    
+    const commands = database.prepare('SELECT * FROM commands WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(c => ({
+        command: c.command, args: c.args, timestamp: c.date
+    }));
+    
+    const roles = database.prepare('SELECT * FROM role_history WHERE userId = ? ORDER BY date DESC LIMIT 100').all(userId).map(r => ({
+        type: r.type, roles: [r.roleName], timestamp: r.date
+    }));
+    
+    const nicknames = database.prepare('SELECT * FROM nickname_history WHERE userId = ? ORDER BY date DESC LIMIT 100').all(userId).map(n => ({
+        old: n.oldNick, new: n.newNick, timestamp: n.date
+    }));
+    
+    const usernameHistory = database.prepare('SELECT * FROM username_history WHERE userId = ? ORDER BY date DESC LIMIT 50').all(userId).map(u => ({
+        old: u.oldUsername, new: u.newUsername, timestamp: u.date
+    }));
+    
+    const avatarHistory = database.prepare('SELECT * FROM avatar_history WHERE userId = ? ORDER BY date DESC LIMIT 50').all(userId).map(a => ({
+        old: a.oldAvatar, new: a.newAvatar, timestamp: a.date
+    }));
+    
+    const statusHistory = database.prepare('SELECT * FROM status_history WHERE userId = ? ORDER BY date DESC LIMIT 200').all(userId).map(s => ({
+        old: s.oldStatus, new: s.newStatus, timestamp: s.date
+    }));
+    
+    const activityHistory = database.prepare('SELECT * FROM activity_history WHERE userId = ? ORDER BY date DESC LIMIT 200').all(userId).map(a => ({
+        old: a.oldActivity, new: a.newActivity, timestamp: a.date
+    }));
+    
+    const mentions = database.prepare('SELECT * FROM mentions WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(m => ({
+        username: m.mentionedUserId, channel: m.channelName, timestamp: m.date
+    }));
+    
+    const mentionedBy = database.prepare('SELECT * FROM mentioned_by WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(m => ({
+        username: m.byUsername, channel: m.channelName, timestamp: m.date
+    }));
+    
+    const reactionsGiven = database.prepare('SELECT * FROM reactions_given WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(r => ({
+        emoji: r.emoji, messageAuthor: r.messageAuthor, timestamp: r.date
+    }));
+    
+    const reactionsReceived = database.prepare('SELECT * FROM reactions_received WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(r => ({
+        emoji: r.emoji, from: r.fromUsername, timestamp: r.date
+    }));
+    
+    const links = database.prepare('SELECT * FROM links WHERE userId = ? ORDER BY date DESC LIMIT 300').all(userId).map(l => ({
+        url: l.url, channel: l.channelName, timestamp: l.date
+    }));
+    
+    const files = database.prepare('SELECT * FROM files WHERE userId = ? ORDER BY date DESC LIMIT 300').all(userId).map(f => ({
+        name: f.name, size: f.size, channel: f.channelName, timestamp: f.date
+    }));
+    
+    const emojis = database.prepare('SELECT * FROM emojis_used WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(e => ({
+        emoji: e.emoji, channel: e.channelName, timestamp: e.date
+    }));
+    
+    const activity = database.prepare('SELECT * FROM activity WHERE userId = ? ORDER BY date DESC LIMIT 30').all(userId);
+    const activeDays = {};
+    activity.forEach(a => {
+        activeDays[a.date] = {
+            date: a.date,
+            firstActivity: a.firstActivity,
+            lastActivity: a.lastActivity,
+            duration: a.duration,
+            sessions: a.sessions,
+            types: { message: a.messages, voice: a.voiceMinutes }
+        };
+    });
+    
+    return {
+        userId: userId,
+        createdAt: user?.createdAt,
+        messageCount: user?.messageCount || 0,
+        voiceMinutes: user?.voiceMinutes || 0,
+        wordCount: user?.wordCount || 0,
+        characterCount: user?.characterCount || 0,
+        lastMessage: user?.lastMessage,
+        messages: messages,
+        voiceSessions: voiceSessions,
+        voicePeriods: voicePeriods,
+        commands: commands,
+        roles: roles,
+        nicknames: nicknames,
+        usernameHistory: usernameHistory,
+        avatarHistory: avatarHistory,
+        statusHistory: statusHistory,
+        activityHistory: activityHistory,
+        mentions: mentions,
+        mentionedBy: mentionedBy,
+        reactionsGiven: reactionsGiven,
+        reactionsReceived: reactionsReceived,
+        links: links,
+        files: files,
+        emojis: emojis,
+        warnings: warns.map(w => ({ reason: w.reason, by: w.byUser, timestamp: w.date })),
+        joins: database.prepare('SELECT * FROM joins_leaves WHERE userId = ? AND type = "join" ORDER BY date DESC LIMIT 10').all(userId).map(j => ({ tag: j.tag, timestamp: j.date })),
+        leaves: database.prepare('SELECT * FROM joins_leaves WHERE userId = ? AND type = "leave" ORDER BY date DESC LIMIT 10').all(userId).map(l => ({ tag: l.tag, timestamp: l.date })),
+        activeDays: activeDays,
+        dailyStats: {},
+        hourlyActivity: {},
+        channelActivity: {},
+        voiceStats: {}
+    };
+}
+
 // =========================== BOT ===========================
 const client = new Client({
     intents: [
@@ -46,7 +201,6 @@ const client = new Client({
     ],
     partials: [Partials.Channel, Partials.Message, Partials.GuildMember, Partials.User]
 });
-
 // =========================== SLASH KOMUTLARI ===========================
 const commands = [
     new SlashCommandBuilder()
@@ -93,10 +247,15 @@ const commands = [
         .setDescription('Sunucudaki webhook\'ları denetler (DM\'den .log)'),
     new SlashCommandBuilder()
         .setName('guvenlik-rapor')
-        .setDescription('7 günlük güvenlik raporu (DM\'den .log)')
+        .setDescription('7 günlük güvenlik raporu (DM\'den .log)'),
+    new SlashCommandBuilder()
+        .setName('gecmissorgula')
+        .setDescription('Bir kullanıcının tüm geçmişini DM\'den .log olarak gönderir')
+        .addUserOption(option =>
+            option.setName('kisi').setDescription('Geçmişi sorgulanacak kişi').setRequired(true))
 ];
 
-// =========================== YARDIMCI ===========================
+// =========================== YARDIMCI FONKSİYONLAR ===========================
 function createLogFile(content, fileName) {
     const buffer = Buffer.from(content, 'utf-8');
     return new AttachmentBuilder(buffer, { name: fileName });
@@ -141,10 +300,9 @@ async function returnToFixedChannel(guildId) {
 
 // =========================== READY ===========================
 client.once('ready', async () => {
+    loadGozaltinda();
     console.log(`${EMOJIS.kalkan} ${client.user.tag} hazır! ${EMOJIS.trbayrak}`);
-    console.log(`📊 SQLite veritabanı: data/kale.db`);
 
-    // Slash komutlarını kaydet
     const rest = new REST({ version: '10' }).setToken(token2);
     try {
         await rest.put(
@@ -156,7 +314,6 @@ client.once('ready', async () => {
         console.error('Komut kaydetme hatası:', e);
     }
 
-    // Sabit ses kanalına katıl
     try {
         const guild = await client.guilds.fetch(GUILD_ID);
         const voiceChannel = guild.channels.cache.get(SABIT_SES_KANALI_ID);
@@ -206,22 +363,22 @@ client.on('interactionCreate', async (interaction) => {
     try {
         // ==================== GÖZALTINDAKİLER ====================
         if (commandName === 'gozaltindakiler') {
-            const list = db.getCustodyList();
+            const list = Object.values(gozaltinda);
             if (list.length === 0) {
                 return interaction.editReply({ content: `${EMOJIS.sari} Gözaltında kimse yok.` });
             }
 
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║      UKRAYNAA GÜVENLİK - GÖZALTINDAKİLER LİSTESİ           ║\n`;
+            content += `║           UKRAYNAA GÜVENLİK - GÖZALTINDAKİLER LİSTESİ       ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
             content += `Toplam: ${list.length} kişi\n\n`;
 
             for (const [i, data] of list.entries()) {
                 const u = await client.users.fetch(data.userId).catch(() => null);
                 content += `${i + 1}. ${u ? u.tag : 'Bilinmeyen'} (${data.userId})\n`;
-                content += `   Sebep: ${data.reason}\n`;
-                content += `   Yetkili: ${data.byUser}\n`;
-                content += `   Tarih: ${new Date(data.date).toLocaleString('tr-TR')}\n\n`;
+                content += `   Sebep: ${data.sebep}\n`;
+                content += `   Yetkili: ${data.yetkili}\n`;
+                content += `   Tarih: ${new Date(data.tarih).toLocaleString('tr-TR')}\n\n`;
             }
 
             const attachment = createLogFile(content, `gozaltindakiler-${Date.now()}.log`);
@@ -250,7 +407,7 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             await targetMember.roles.add(role, `Gözaltına alındı: ${sebep}`);
-            db.addCustody(target.id, sebep, user.tag, user.id);
+            addGozaltinda(target.id, sebep, user.tag);
 
             await interaction.editReply({ content: `${EMOJIS.kelepce} ${target.tag} gözaltına alındı. Sebep: ${sebep}` });
 
@@ -267,7 +424,7 @@ client.on('interactionCreate', async (interaction) => {
                     )
                     .setTimestamp()
                     .setFooter({ text: `UKRAYNAA Güvenlik ${EMOJIS.trbayrak}` });
-                await logChannel.send({ embeds: [embed] });
+                await logChannel.send({ embeds: [embed], flags: 4096 });
             }
         }
 
@@ -286,7 +443,7 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             await targetMember.roles.remove(role, 'Gözaltından çıkarıldı');
-            db.removeCustody(target.id);
+            removeGozaltinda(target.id);
 
             await interaction.editReply({ content: `${EMOJIS.yesil} ${target.tag} gözaltından çıkarıldı.` });
 
@@ -302,14 +459,14 @@ client.on('interactionCreate', async (interaction) => {
                     )
                     .setTimestamp()
                     .setFooter({ text: `UKRAYNAA Güvenlik ${EMOJIS.trbayrak}` });
-                await logChannel.send({ embeds: [embed] });
+                await logChannel.send({ embeds: [embed], flags: 4096 });
             }
         }
 
         // ==================== GÜVENLİK TARA ====================
         else if (commandName === 'guvenlik-tara') {
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║         UKRAYNAA GÜVENLİK - TAM SUNUCU TARAMASI            ║\n`;
+            content += `║          UKRAYNAA GÜVENLİK - TAM SUNUCU TARAMASI           ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
             content += `Tarih: ${new Date().toLocaleString('tr-TR')}\n\n`;
 
@@ -495,7 +652,7 @@ client.on('interactionCreate', async (interaction) => {
                 const perms = m.permissions.toArray();
                 const riskliPerm = perms.includes('Administrator') || perms.includes('ManageGuild') || perms.includes('ManageRoles') || perms.includes('BanMembers') || perms.includes('KickMembers');
                 const yeniHesap = (Date.now() - m.user.createdTimestamp) < 7 * 24 * 60 * 60 * 1000;
-                const gozalti = db.isInCustody(id);
+                const gozalti = gozaltinda[id] ? true : false;
                 if (riskliPerm || yeniHesap || gozalti) {
                     riskli.push({ member: m, riskliPerm, yeniHesap, gozalti });
                 }
@@ -598,16 +755,16 @@ client.on('interactionCreate', async (interaction) => {
             }
             content += `\n`;
 
-            const gozaltiList = db.getCustodyList();
+            const gozaltiList = Object.values(gozaltinda).filter(g => new Date(g.tarih).getTime() > weekAgo);
             content += `═══════════════════════════════════════════════════════════════\n`;
             content += `GÖZALTINA ALINANLAR (${gozaltiList.length})\n`;
             content += `═══════════════════════════════════════════════════════════════\n`;
             for (const g of gozaltiList) {
                 const u = await client.users.fetch(g.userId).catch(() => null);
                 content += `${u ? u.tag : 'Bilinmeyen'} (${g.userId})\n`;
-                content += `   Sebep: ${g.reason}\n`;
-                content += `   Yetkili: ${g.byUser}\n`;
-                content += `   Tarih: ${new Date(g.date).toLocaleString('tr-TR')}\n\n`;
+                content += `   Sebep: ${g.sebep}\n`;
+                content += `   Yetkili: ${g.yetkili}\n`;
+                content += `   Tarih: ${new Date(g.tarih).toLocaleString('tr-TR')}\n\n`;
             }
 
             const bans = await guild.bans.fetch();
@@ -645,9 +802,191 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
+        // ==================== GEÇMİŞ SORGULA ====================
+        else if (commandName === 'gecmissorgula') {
+            const target = interaction.options.getUser('kisi');
+            const targetMember = await guild.members.fetch(target.id).catch(() => null);
+
+            if (!targetMember) {
+                return interaction.editReply({ content: `${EMOJIS.kirmizi} Kullanıcı sunucuda bulunamadı!` });
+            }
+
+            const logData = loadUserLogFromDB(target.id);
+            const warnData = db.getWarns(target.id);
+
+            const totalRecords = 
+                (logData.messages?.length || 0) +
+                (logData.voiceSessions?.length || 0) +
+                (logData.roles?.length || 0) +
+                (logData.nicknames?.length || 0) +
+                (logData.warnings?.length || 0) +
+                (logData.commands?.length || 0) +
+                (logData.joins?.length || 0) +
+                (logData.leaves?.length || 0) +
+                (logData.mentions?.length || 0) +
+                (logData.mentionedBy?.length || 0) +
+                (logData.reactionsGiven?.length || 0) +
+                (logData.reactionsReceived?.length || 0) +
+                (logData.links?.length || 0) +
+                (logData.files?.length || 0) +
+                (logData.emojis?.length || 0) +
+                (logData.statusHistory?.length || 0) +
+                (logData.activityHistory?.length || 0) +
+                (logData.usernameHistory?.length || 0) +
+                (logData.avatarHistory?.length || 0);
+
+            let content = '';
+            content += `╔══════════════════════════════════════════════════════════════╗\n`;
+            content += `║           UKRAYNAA GÜVENLİK - KULLANICI RAPORU              ║\n`;
+            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `👤 TEMEL BİLGİLER\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `• Kullanıcı Adı: ${target.username}\n`;
+            content += `• Görünen Ad: ${target.globalName || target.username}\n`;
+            content += `• Kullanıcı ID: ${target.id}\n`;
+            content += `• Bot mu?: ${target.bot ? 'Evet' : 'Hayır'}\n`;
+            content += `• Hesap Oluşturma: ${target.createdAt.toLocaleString('tr-TR')}\n`;
+            content += `• Sunucuya Katılım: ${targetMember.joinedAt?.toLocaleString('tr-TR') || 'Bilinmiyor'}\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `📊 GENEL İSTATİSTİKLER\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `• Toplam Mesaj: ${logData.messageCount || 0}\n`;
+            content += `• Toplam Kelime: ${logData.wordCount || 0}\n`;
+            content += `• Toplam Karakter: ${logData.characterCount || 0}\n`;
+            content += `• Ses Süresi: ${logData.voiceMinutes || 0} dakika\n`;
+            content += `• Uyarı Sayısı: ${warnData.length}\n`;
+            content += `• Toplam Log Kaydı: ${totalRecords}\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `💬 SON 100 MESAJ\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += (logData.messages || []).slice(0, 100).map((m, i) => 
+                `${i+1}. [${new Date(m.timestamp).toLocaleString('tr-TR')}] #${m.channel}: ${m.content || '(boş)'}`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `🔗 PAYLAŞILAN LİNKLER (Son 30)\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += (logData.links || []).slice(0, 30).map((l, i) => 
+                `${i+1}. [${new Date(l.timestamp).toLocaleString('tr-TR')}] #${l.channel}: ${l.url}`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `📎 PAYLAŞILAN DOSYALAR (Son 30)\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += (logData.files || []).slice(0, 30).map((f, i) => 
+                `${i+1}. [${new Date(f.timestamp).toLocaleString('tr-TR')}] #${f.channel}: ${f.name} (${(f.size/1024).toFixed(2)} KB)`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `😀 EN ÇOK KULLANILAN EMOJİLER\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            const emojiCounts = {};
+            (logData.emojis || []).forEach(e => { emojiCounts[e.emoji] = (emojiCounts[e.emoji] || 0) + 1; });
+            content += Object.entries(emojiCounts).sort((a,b) => b[1] - a[1]).slice(0, 20).map(([emoji, count], i) => 
+                `${i+1}. ${emoji}: ${count} kez`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `👥 ETİKETLEMELER\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `Kimi Etiketledi (Son 30):\n`;
+            content += (logData.mentions || []).slice(0, 30).map((m, i) => 
+                `${i+1}. [${new Date(m.timestamp).toLocaleString('tr-TR')}] @${m.username} (#${m.channel})`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\nKim Onu Etiketledi (Son 30):\n`;
+            content += (logData.mentionedBy || []).slice(0, 30).map((m, i) => 
+                `${i+1}. [${new Date(m.timestamp).toLocaleString('tr-TR')}] @${m.username} (#${m.channel})`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `😊 TEPKİLER\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `Verdiği (Son 30):\n`;
+            content += (logData.reactionsGiven || []).slice(0, 30).map((r, i) => 
+                `${i+1}. [${new Date(r.timestamp).toLocaleString('tr-TR')}] ${r.emoji} → @${r.messageAuthor}`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\nAldığı (Son 30):\n`;
+            content += (logData.reactionsReceived || []).slice(0, 30).map((r, i) => 
+                `${i+1}. [${new Date(r.timestamp).toLocaleString('tr-TR')}] ${r.emoji} ← @${r.from}`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `🎭 ROL DEĞİŞİKLİKLERİ\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += (logData.roles || []).slice(0, 30).map((r, i) => 
+                `${i+1}. [${new Date(r.timestamp).toLocaleString('tr-TR')}] ${r.type}: ${r.roles?.join(', ')}`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `✏️ NICK DEĞİŞİKLİKLERİ\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += (logData.nicknames || []).map((n, i) => 
+                `${i+1}. [${new Date(n.timestamp).toLocaleString('tr-TR')}] ${n.old || '(yok)'} → ${n.new || '(yok)'}`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `📛 KULLANICI ADI DEĞİŞİKLİKLERİ\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += (logData.usernameHistory || []).map((u, i) => 
+                `${i+1}. [${new Date(u.timestamp).toLocaleString('tr-TR')}] ${u.old} → ${u.new}`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `🟢 DURUM GEÇMİŞİ (Son 50)\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += (logData.statusHistory || []).slice(0, 50).map((s, i) => 
+                `${i+1}. [${new Date(s.timestamp).toLocaleString('tr-TR')}] ${s.old} → ${s.new}`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `🎮 AKTİVİTE GEÇMİŞİ (Son 50)\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += (logData.activityHistory || []).slice(0, 50).map((a, i) => 
+                `${i+1}. [${new Date(a.timestamp).toLocaleString('tr-TR')}] ${a.old || '(yok)'} → ${a.new || '(yok)'}`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `💻 KULLANILAN KOMUTLAR (Son 100)\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += (logData.commands || []).slice(0, 100).map((c, i) => 
+                `${i+1}. [${new Date(c.timestamp).toLocaleString('tr-TR')}] /${c.command} ${c.args || ''}`
+            ).join('\n') || '• Kayıt yok';
+            content += `\n\n`;
+
+            content += `═══════════════════════════════════════════════════════════════\n`;
+            content += `RAPOR SONU - ${new Date().toLocaleString('tr-TR')}\n`;
+            content += `UKRAYNAA Bot ${EMOJIS.trbayrak}\n`;
+            content += `═══════════════════════════════════════════════════════════════\n`;
+
+            const buffer = Buffer.from(content, 'utf-8');
+            const attachment = new AttachmentBuilder(buffer, { name: `${target.username}-gecmis.log` });
+
+            const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} **${target.username}** kullanıcısının geçmişi (${totalRecords} kayıt):`, attachment);
+
+            if (dmSuccess) {
+                await interaction.editReply({ content: `${EMOJIS.yesil} Geçmiş raporu DM'ine gönderildi! (${totalRecords} kayıt)` });
+            } else {
+                await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi! DM'in kapalı olabilir.` });
+            }
+        }
+
     } catch (e) {
         console.error('Komut hatası:', e);
-        db.addErrorLog(interaction.commandName, e.message, e.stack, user.id, guild.id);
         await interaction.editReply({ content: `${EMOJIS.kirmizi} Bir hata oluştu: ${e.message}` });
     }
 });
