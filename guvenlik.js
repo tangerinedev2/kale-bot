@@ -179,7 +179,7 @@ function loadUserLogFromDB(userId) {
         emojis: emojis,
         warnings: warns.map(w => ({ reason: w.reason, by: w.byUser, timestamp: w.date })),
         joins: database.prepare("SELECT * FROM joins_leaves WHERE userId = ? AND type = 'join' ORDER BY date DESC LIMIT 10").all(userId).map(j => ({ tag: j.tag, timestamp: j.date })),
-        leaves: database.prepare('SELECT * FROM joins_leaves WHERE userId = ? AND type = "leave" ORDER BY date DESC LIMIT 10').all(userId).map(l => ({ tag: l.tag, timestamp: l.date })),
+        leaves: database.prepare("SELECT * FROM joins_leaves WHERE userId = ? AND type = 'leave' ORDER BY date DESC LIMIT 10").all(userId).map(l => ({ tag: l.tag, timestamp: l.date })),
         activeDays: activeDays,
         dailyStats: {},
         hourlyActivity: {},
