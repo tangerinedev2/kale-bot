@@ -1,5 +1,5 @@
 // ============================================================
-// KALE GUARD BOT - SQLite Sürümü
+// UKRAYNAA GUARD BOT - SQLite Sürümü
 // Veri sahibi bot. Tüm veriler SQLite'ta.
 // ============================================================
 
@@ -212,7 +212,7 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║           KALE GÜVENLİK - GÖZALTINDAKİLER LİSTESİ           ║\n`;
+            content += `║      UKRAYNAA GÜVENLİK - GÖZALTINDAKİLER LİSTESİ           ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
             content += `Toplam: ${list.length} kişi\n\n`;
 
@@ -266,7 +266,7 @@ client.on('interactionCreate', async (interaction) => {
                         { name: 'Sebep', value: sebep }
                     )
                     .setTimestamp()
-                    .setFooter({ text: `KALE Güvenlik ${EMOJIS.trbayrak}` });
+                    .setFooter({ text: `UKRAYNAA Güvenlik ${EMOJIS.trbayrak}` });
                 await logChannel.send({ embeds: [embed] });
             }
         }
@@ -301,7 +301,7 @@ client.on('interactionCreate', async (interaction) => {
                         { name: 'Yetkili', value: `${user}`, inline: true }
                     )
                     .setTimestamp()
-                    .setFooter({ text: `KALE Güvenlik ${EMOJIS.trbayrak}` });
+                    .setFooter({ text: `UKRAYNAA Güvenlik ${EMOJIS.trbayrak}` });
                 await logChannel.send({ embeds: [embed] });
             }
         }
@@ -309,11 +309,10 @@ client.on('interactionCreate', async (interaction) => {
         // ==================== GÜVENLİK TARA ====================
         else if (commandName === 'guvenlik-tara') {
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║              KALE GÜVENLİK - TAM SUNUCU TARAMASI            ║\n`;
+            content += `║         UKRAYNAA GÜVENLİK - TAM SUNUCU TARAMASI            ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
             content += `Tarih: ${new Date().toLocaleString('tr-TR')}\n\n`;
 
-            // Roller
             content += `═══════════════════════════════════════════════════════════════\n`;
             content += `ROLLER (${guild.roles.cache.size})\n`;
             content += `═══════════════════════════════════════════════════════════════\n`;
@@ -326,7 +325,6 @@ client.on('interactionCreate', async (interaction) => {
             }
             content += `\n`;
 
-            // Kanallar
             content += `═══════════════════════════════════════════════════════════════\n`;
             content += `KANALLAR (${guild.channels.cache.size})\n`;
             content += `═══════════════════════════════════════════════════════════════\n`;
@@ -335,7 +333,6 @@ client.on('interactionCreate', async (interaction) => {
             }
             content += `\n`;
 
-            // Botlar
             content += `═══════════════════════════════════════════════════════════════\n`;
             content += `BOTLAR\n`;
             content += `═══════════════════════════════════════════════════════════════\n`;
@@ -347,7 +344,6 @@ client.on('interactionCreate', async (interaction) => {
             }
             content += `\n`;
 
-            // Webhook'lar
             const webhooks = await guild.fetchWebhooks();
             content += `═══════════════════════════════════════════════════════════════\n`;
             content += `WEBHOOK'LAR (${webhooks.size})\n`;
@@ -358,7 +354,6 @@ client.on('interactionCreate', async (interaction) => {
             }
             content += `\n`;
 
-            // Davetler
             const invites = await guild.invites.fetch();
             content += `═══════════════════════════════════════════════════════════════\n`;
             content += `DAVETLER (${invites.size})\n`;
@@ -382,7 +377,7 @@ client.on('interactionCreate', async (interaction) => {
         else if (commandName === 'bot-denetle') {
             const bots = guild.members.cache.filter(m => m.user.bot);
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║                 KALE GÜVENLİK - BOT DENETİMİ                ║\n`;
+            content += `║              UKRAYNAA GÜVENLİK - BOT DENETİMİ              ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
             content += `Toplam Bot: ${bots.size}\n\n`;
 
@@ -415,7 +410,7 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║                KALE GÜVENLİK - İZİN DENETİMİ                 ║\n`;
+            content += `║            UKRAYNAA GÜVENLİK - İZİN DENETİMİ              ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
 
             if (rol) {
@@ -465,7 +460,7 @@ client.on('interactionCreate', async (interaction) => {
             const isCustody = db.isInCustody(target.id);
 
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║                 KALE GÜVENLİK - ÜYE DENETİMİ                 ║\n`;
+            content += `║              UKRAYNAA GÜVENLİK - ÜYE DENETİMİ              ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
             content += `Kullanıcı: ${target.tag} (${target.id})\n`;
             content += `Görünen Ad: ${targetMember.displayName}\n`;
@@ -507,7 +502,7 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║                KALE GÜVENLİK - RİSKLİ ÜYELER                 ║\n`;
+            content += `║             UKRAYNAA GÜVENLİK - RİSKLİ ÜYELER              ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
             content += `Toplam Riskli: ${riskli.length}\n\n`;
 
@@ -533,7 +528,7 @@ client.on('interactionCreate', async (interaction) => {
         else if (commandName === 'davet-denetle') {
             const invites = await guild.invites.fetch();
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║                KALE GÜVENLİK - DAVET DENETİMİ                ║\n`;
+            content += `║            UKRAYNAA GÜVENLİK - DAVET DENETİMİ             ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
             content += `Toplam Davet: ${invites.size}\n\n`;
 
@@ -561,7 +556,7 @@ client.on('interactionCreate', async (interaction) => {
         else if (commandName === 'webhook-denetle') {
             const webhooks = await guild.fetchWebhooks();
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║               KALE GÜVENLİK - WEBHOOK DENETİMİ               ║\n`;
+            content += `║           UKRAYNAA GÜVENLİK - WEBHOOK DENETİMİ             ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
             content += `Toplam Webhook: ${webhooks.size}\n\n`;
 
@@ -589,12 +584,11 @@ client.on('interactionCreate', async (interaction) => {
             const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
 
             let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║              KALE GÜVENLİK - 7 GÜNLÜK RAPOR                 ║\n`;
+            content += `║           UKRAYNAA GÜVENLİK - 7 GÜNLÜK RAPOR               ║\n`;
             content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
             content += `Rapor Tarihi: ${new Date().toLocaleString('tr-TR')}\n`;
             content += `Dönem: ${new Date(weekAgo).toLocaleString('tr-TR')} - ${new Date(now).toLocaleString('tr-TR')}\n\n`;
 
-            // Yeni üyeler
             const newMembers = guild.members.cache.filter(m => m.joinedTimestamp > weekAgo);
             content += `═══════════════════════════════════════════════════════════════\n`;
             content += `YENİ ÜYELER (${newMembers.size})\n`;
@@ -604,7 +598,6 @@ client.on('interactionCreate', async (interaction) => {
             }
             content += `\n`;
 
-            // Gözaltına alınanlar
             const gozaltiList = db.getCustodyList();
             content += `═══════════════════════════════════════════════════════════════\n`;
             content += `GÖZALTINA ALINANLAR (${gozaltiList.length})\n`;
@@ -617,7 +610,6 @@ client.on('interactionCreate', async (interaction) => {
                 content += `   Tarih: ${new Date(g.date).toLocaleString('tr-TR')}\n\n`;
             }
 
-            // Banlar
             const bans = await guild.bans.fetch();
             content += `═══════════════════════════════════════════════════════════════\n`;
             content += `TOPLAM BAN (${bans.size})\n`;
@@ -627,7 +619,6 @@ client.on('interactionCreate', async (interaction) => {
             }
             content += `\n`;
 
-            // Riskli üyeler
             const riskli = guild.members.cache.filter(m => {
                 if (m.user.bot) return false;
                 const perms = m.permissions.toArray();
