@@ -128,7 +128,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
 
             // ACİL DURUM (DM)
             if (!message.guild && message.author.id === ADMIN_ID) {
-                if (message.content.trim() === 'k!ACİLDURUM') {
+                if (message.content.trim() === `${PREFIX}ACİLDURUM`) {
                     try {
                         await message.reply('🔐 **Acil durum şifresini girin:**');
                         const filter = m => m.author.id === ADMIN_ID;
