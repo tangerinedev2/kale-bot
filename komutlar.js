@@ -782,624 +782,513 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 await message.reply({ embeds: [embed] });
                 return;
             }
-            const { Client, GatewayIntentBits, Partials, EmbedBuilder, PermissionsBitField, AttachmentBuilder, SlashCommandBuilder, REST, Routes } = require('discord.js');
-const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
-const fs = require('fs');
-const path = require('path');
-require('dotenv').config();
+            
+            // ==================== FİNANS & HAVA ====================
+            if (command === 'döviz' || command === 'doviz' || command === 'currency') {
+                try {
+                    const response = await safeFetch('https://open.er-api.com/v6/latest/USD');
+                    const data = await response.json();
+                    const rates = data.rates;
+                    const embed = new EmbedBuilder().setColor(0x00FF00).setTitle(`${EMOJI.dolar} DÖVİZ KURLARI (TRY)`).setDescription(`**USD:** ${rates.TRY.toFixed(2)} ₺\n**EUR:** ${(rates.TRY / rates.EUR).toFixed(2)} ₺\n**GBP:** ${(rates.TRY / rates.GBP).toFixed(2)} ₺\n**JPY:** ${((rates.TRY / rates.JPY) * 100).toFixed(2)} ₺ (100 JPY)\n**CHF:** ${(rates.TRY / rates.CHF).toFixed(2)} ₺\n**CAD:** ${(rates.TRY / rates.CAD).toFixed(2)} ₺\n**AUD:** ${(rates.TRY / rates.AUD).toFixed(2)} ₺\n**CNY:** ${(rates.TRY / rates.CNY).toFixed(2)} ₺`).setFooter({ text: `open.er-api.com ${EMOJI.trbayrak}` }).setTimestamp();
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Döviz kurları alınamadı.`); }
+                return;
+            }
 
-const db = require('./data/db.js');
+            if (command === 'hava' || command === 'weather') {
+                const sehir = args.join(' ') || 'Istanbul';
+                try {
+                    const response = await safeFetch(`https://wttr.in/${encodeURIComponent(sehir)}?format=j1`);
+                    const data = await response.json();
+                    const current = data.current_condition[0];
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`☀️ ${sehir.toUpperCase()} HAVA DURUMU`).setDescription(`**Durum:** ${current.weatherDesc[0].value}\n**Sıcaklık:** ${current.temp_C}°C (Hissedilen: ${current.FeelsLikeC}°C)\n**Nem:** %${current.humidity}\n**Rüzgar:** ${current.windspeedKmph} km/s`).setFooter({ text: `wttr.in ${EMOJI.trbayrak}` });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Hava durumu alınamadı.`); }
+                return;
+            }
 
-const token2 = process.env.TOKEN2;
-const GUILD_ID = '1543963769120497805';
-const ADMIN_ID = '1332226105221971988';
-const LOG_CHANNEL_ID = '1546327530267742420';
-const GOZALTINDA_ROLE_ID = '1547933029979398226';
-const SABIT_SES_KANALI_ID = '1546154071113728101';
-
-const EMOJIS = {
-    yesil: '<:yesil:1547954548876902460>',
-    sari: '<:sari:1547954546251276419>',
-    kurucu: '<:kurucu:1547954544879866059>',
-    kirmizi: '<:kirmizi:1547954543671771146>',
-    kelepce: '<:kelepce:1547954542480597022>',
-    kalkan: '<:kalkan:1547954539817345044>',
-    dogrulanmadi: '<:dogrulanmadi:1547954536034082896>',
-    dogrulandi: '<:dogrulandi:1547954534201032774>',
-    trbayrak: '<a:trbayrak:1547936258859475014>',
-    kale: '<:logo:1561439840351035434>'
-};
-
-const GOZALTINDA_PATH = path.join(__dirname, 'gozaltinda.json');
-let gozaltinda = {};
-
-function loadGozaltinda() {
-    try {
-        if (fs.existsSync(GOZALTINDA_PATH)) gozaltinda = JSON.parse(fs.readFileSync(GOZALTINDA_PATH, 'utf8'));
-        else fs.writeFileSync(GOZALTINDA_PATH, JSON.stringify({}, null, 2));
-    } catch (e) { gozaltinda = {}; }
-}
-function saveGozaltinda() { try { fs.writeFileSync(GOZALTINDA_PATH, JSON.stringify(gozaltinda, null, 2)); } catch (e) {} }
-function addGozaltinda(userId, sebep, yetkili) {
-    gozaltinda[userId] = { userId, sebep: sebep || 'Belirtilmedi', yetkili: yetkili || 'Bilinmiyor', tarih: new Date().toISOString() };
-    saveGozaltinda();
-}
-function removeGozaltinda(userId) { delete gozaltinda[userId]; saveGozaltinda(); }
-
-function loadUserLogFromDB(userId) {
-    const database = db.getDB();
-    const user = db.getUser(userId);
-    const warns = db.getWarns(userId);
-    const messages = database.prepare('SELECT * FROM messages WHERE userId = ? ORDER BY date DESC LIMIT 1000').all(userId).map(m => ({ id: m.messageId, channel: m.channelName, content: m.content, timestamp: m.date }));
-    const voiceSessions = database.prepare('SELECT * FROM voice_sessions WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(v => ({ channel: v.channelName, duration: v.duration, timestamp: v.date, type: v.type }));
-    const voicePeriods = database.prepare('SELECT * FROM voice_periods WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(v => ({ channel: v.channelName, formatted: v.formatted, timestamp: v.date }));
-    const commands = database.prepare('SELECT * FROM commands WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(c => ({ command: c.command, args: c.args, timestamp: c.date }));
-    const roles = database.prepare('SELECT * FROM role_history WHERE userId = ? ORDER BY date DESC LIMIT 100').all(userId).map(r => ({ type: r.type, roles: [r.roleName], timestamp: r.date }));
-    const nicknames = database.prepare('SELECT * FROM nickname_history WHERE userId = ? ORDER BY date DESC LIMIT 100').all(userId).map(n => ({ old: n.oldNick, new: n.newNick, timestamp: n.date }));
-    const usernameHistory = database.prepare('SELECT * FROM username_history WHERE userId = ? ORDER BY date DESC LIMIT 50').all(userId).map(u => ({ old: u.oldUsername, new: u.newUsername, timestamp: u.date }));
-    const avatarHistory = database.prepare('SELECT * FROM avatar_history WHERE userId = ? ORDER BY date DESC LIMIT 50').all(userId).map(a => ({ old: a.oldAvatar, new: a.newAvatar, timestamp: a.date }));
-    const statusHistory = database.prepare('SELECT * FROM status_history WHERE userId = ? ORDER BY date DESC LIMIT 200').all(userId).map(s => ({ old: s.oldStatus, new: s.newStatus, timestamp: s.date }));
-    const activityHistory = database.prepare('SELECT * FROM activity_history WHERE userId = ? ORDER BY date DESC LIMIT 200').all(userId).map(a => ({ old: a.oldActivity, new: a.newActivity, timestamp: a.date }));
-    const mentions = database.prepare('SELECT * FROM mentions WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(m => ({ username: m.mentionedUserId, channel: m.channelName, timestamp: m.date }));
-    const mentionedBy = database.prepare('SELECT * FROM mentioned_by WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(m => ({ username: m.byUsername, channel: m.channelName, timestamp: m.date }));
-    const reactionsGiven = database.prepare('SELECT * FROM reactions_given WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(r => ({ emoji: r.emoji, messageAuthor: r.messageAuthor, timestamp: r.date }));
-    const reactionsReceived = database.prepare('SELECT * FROM reactions_received WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(r => ({ emoji: r.emoji, from: r.fromUsername, timestamp: r.date }));
-    const links = database.prepare('SELECT * FROM links WHERE userId = ? ORDER BY date DESC LIMIT 300').all(userId).map(l => ({ url: l.url, channel: l.channelName, timestamp: l.date }));
-    const files = database.prepare('SELECT * FROM files WHERE userId = ? ORDER BY date DESC LIMIT 300').all(userId).map(f => ({ name: f.name, size: f.size, channel: f.channelName, timestamp: f.date }));
-    const emojis = database.prepare('SELECT * FROM emojis_used WHERE userId = ? ORDER BY date DESC LIMIT 500').all(userId).map(e => ({ emoji: e.emoji, channel: e.channelName, timestamp: e.date }));
-    const activity = database.prepare('SELECT * FROM activity WHERE userId = ? ORDER BY date DESC LIMIT 30').all(userId);
-    const activeDays = {};
-    activity.forEach(a => {
-        activeDays[a.date] = { date: a.date, firstActivity: a.firstActivity, lastActivity: a.lastActivity, duration: a.duration, sessions: a.sessions, types: { message: a.messages, voice: a.voiceMinutes } };
-    });
-    return {
-        userId, createdAt: user?.createdAt, messageCount: user?.messageCount || 0, voiceMinutes: user?.voiceMinutes || 0,
-        wordCount: user?.wordCount || 0, characterCount: user?.characterCount || 0, lastMessage: user?.lastMessage,
-        messages, voiceSessions, voicePeriods, commands, roles, nicknames, usernameHistory, avatarHistory,
-        statusHistory, activityHistory, mentions, mentionedBy, reactionsGiven, reactionsReceived, links, files, emojis,
-        warnings: warns.map(w => ({ reason: w.reason, by: w.byUser, timestamp: w.date })),
-        joins: database.prepare("SELECT * FROM joins_leaves WHERE userId = ? AND type = 'join' ORDER BY date DESC LIMIT 10").all(userId).map(j => ({ tag: j.tag, timestamp: j.date })),
-        leaves: database.prepare("SELECT * FROM joins_leaves WHERE userId = ? AND type = 'leave' ORDER BY date DESC LIMIT 10").all(userId).map(l => ({ tag: l.tag, timestamp: l.date })),
-        activeDays, dailyStats: {}, hourlyActivity: {}, channelActivity: {}, voiceStats: {}
-    };
-}
-
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration,
-        GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.GuildVoiceStates
-    ],
-    partials: [Partials.Channel, Partials.Message, Partials.GuildMember, Partials.User]
-});
-
-const commands = [
-    new SlashCommandBuilder().setName('gozaltindakiler').setDescription('Gözaltındaki üyeleri listeler (DM\'den .log)'),
-    new SlashCommandBuilder().setName('gozaltina-al').setDescription('Bir üyeyi gözaltına alır')
-        .addUserOption(option => option.setName('kisi').setDescription('Gözaltına alınacak kişi').setRequired(true))
-        .addStringOption(option => option.setName('sebep').setDescription('Gözaltına alma sebebi').setRequired(false)),
-    new SlashCommandBuilder().setName('gozaltindan-cikar').setDescription('Bir üyeyi gözaltından çıkarır')
-        .addUserOption(option => option.setName('kisi').setDescription('Gözaltından çıkarılacak kişi').setRequired(true)),
-    new SlashCommandBuilder().setName('guvenlik-tara').setDescription('Sunucuyu güvenlik açısından tarar (DM\'den .log)'),
-    new SlashCommandBuilder().setName('bot-denetle').setDescription('Sunucudaki botları denetler (DM\'den .log)'),
-    new SlashCommandBuilder().setName('izin-denetle').setDescription('Rol veya kanal izinlerini denetler')
-        .addRoleOption(option => option.setName('rol').setDescription('Denetlenecek rol').setRequired(false))
-        .addChannelOption(option => option.setName('kanal').setDescription('Denetlenecek kanal').setRequired(false)),
-    new SlashCommandBuilder().setName('uye-denetle').setDescription('Bir üyeyi detaylı denetler')
-        .addUserOption(option => option.setName('kisi').setDescription('Denetlenecek kişi').setRequired(true)),
-    new SlashCommandBuilder().setName('riskli-uyeler').setDescription('Riskli üyeleri listeler (DM\'den .log)'),
-    new SlashCommandBuilder().setName('davet-denetle').setDescription('Sunucudaki davet linklerini denetler (DM\'den .log)'),
-    new SlashCommandBuilder().setName('webhook-denetle').setDescription('Sunucudaki webhook\'ları denetler (DM\'den .log)'),
-    new SlashCommandBuilder().setName('guvenlik-rapor').setDescription('7 günlük güvenlik raporu (DM\'den .log)'),
-    new SlashCommandBuilder().setName('gecmissorgula').setDescription('Bir kullanıcının tüm geçmişini DM\'den .log olarak gönderir')
-        .addUserOption(option => option.setName('kisi').setDescription('Geçmişi sorgulanacak kişi').setRequired(true))
-];
-
-function createLogFile(content, fileName) {
-    const buffer = Buffer.from(content, 'utf-8');
-    return new AttachmentBuilder(buffer, { name: fileName });
-}
-
-async function sendDM(user, content, attachment = null) {
-    try {
-        const dm = await user.createDM();
-        if (attachment) await dm.send({ content, files: [attachment] });
-        else await dm.send({ content });
-        return true;
-    } catch (e) { return false; }
-}
-
-async function returnToFixedChannel(guildId) {
-    try {
-        const guild = client.guilds.cache.get(guildId);
-        if (!guild) return;
-        const hedefKanal = guild.channels.cache.get(SABIT_SES_KANALI_ID);
-        if (!hedefKanal || hedefKanal.type !== 2) return;
-        const mevcutBaglanti = getVoiceConnection(guildId);
-        if (!mevcutBaglanti || mevcutBaglanti.joinConfig.channelId !== SABIT_SES_KANALI_ID) {
-            if (mevcutBaglanti) mevcutBaglanti.destroy();
-            const connection = joinVoiceChannel({ channelId: hedefKanal.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
-            await entersState(connection, VoiceConnectionStatus.Ready, 15000);
-            console.log(`${EMOJIS.yesil} Sabit ses kanalına katıldı: ${hedefKanal.name}`);
-        }
-    } catch (e) { console.error('Ses kanalı hatası:', e); }
-}
-
-client.once('ready', async () => {
-    loadGozaltinda();
-    console.log(`${EMOJIS.kalkan} ${client.user.tag} hazır! ${EMOJIS.trbayrak}`);
-    const rest = new REST({ version: '10' }).setToken(token2);
-    try {
-        await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), { body: commands.map(cmd => cmd.toJSON()) });
-        console.log(`${EMOJIS.yesil} Slash komutları kaydedildi!`);
-    } catch (e) { console.error('Komut kaydetme hatası:', e); }
-    try {
-        const guild = await client.guilds.fetch(GUILD_ID);
-        const voiceChannel = guild.channels.cache.get(SABIT_SES_KANALI_ID);
-        if (voiceChannel && voiceChannel.type === 2) {
-            const existingConnection = getVoiceConnection(GUILD_ID);
-            if (!existingConnection) {
-                const connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
-                await entersState(connection, VoiceConnectionStatus.Ready, 30000);
-                console.log(`${EMOJIS.yesil} Sabit ses kanalında! ${voiceChannel.name}`);
-                connection.on(VoiceConnectionStatus.Disconnected, async () => {
-                    try {
-                        await Promise.race([
-                            entersState(connection, VoiceConnectionStatus.Signalling, 5000),
-                            entersState(connection, VoiceConnectionStatus.Connecting, 5000),
-                        ]);
-                    } catch (e) {
-                        connection.destroy();
-                        setTimeout(() => returnToFixedChannel(GUILD_ID), 2000);
+            if (command === 'kripto' || command === 'crypto') {
+                const embed = new EmbedBuilder().setColor(0xF7931A).setTitle(`${EMOJI.kripto} KRİPTO PARA`).setDescription('*CoinGecko üzerinden gerçek zamanlı veriler*');
+                const cryptos = [{ id: 'bitcoin', name: '₿ Bitcoin' }, { id: 'ethereum', name: '⟠ Ethereum' }, { id: 'solana', name: '◎ Solana' }, { id: 'ripple', name: '✕ XRP' }, { id: 'dogecoin', name: 'Ð Dogecoin' }];
+                try {
+                    const ids = cryptos.map(c => c.id).join(',');
+                    const response = await safeFetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,eur`);
+                    const data = await response.json();
+                    let desc = '';
+                    for (const crypto of cryptos) {
+                        const price = data[crypto.id];
+                        desc += `**${crypto.name}:** ${price ? `$${price.usd} (€${price.eur})` : '❌'}\n`;
                     }
-                });
+                    embed.setDescription(desc);
+                } catch (e) { embed.setDescription('❌ Kripto verileri alınamadı.'); }
+                embed.setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed] });
+                return;
             }
-        }
-    } catch (e) { console.error('Ses kanalına katılma hatası:', e); }
-});
 
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    if (interaction.guildId !== GUILD_ID) return;
-    const { commandName, user, guild } = interaction;
-    const member = await guild.members.fetch(user.id);
-    if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-        return interaction.reply({ content: `${EMOJIS.kirmizi} Bu komutu sadece yöneticiler kullanabilir!`, ephemeral: true });
-    }
-    await interaction.deferReply({ ephemeral: true });
-    try {
-        if (commandName === 'gozaltindakiler') {
-            const list = Object.values(gozaltinda);
-            if (list.length === 0) return interaction.editReply({ content: `${EMOJIS.sari} Gözaltında kimse yok.` });
-            let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║           MELEZYA GÜVENLİK - GÖZALTINDAKİLER LİSTESİ        ║\n`;
-            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
-            content += `Toplam: ${list.length} kişi\n\n`;
-            for (const [i, data] of list.entries()) {
-                const u = await client.users.fetch(data.userId).catch(() => null);
-                content += `${i + 1}. ${u ? u.tag : 'Bilinmeyen'} (${data.userId})\n`;
-                content += `   Sebep: ${data.sebep}\n`;
-                content += `   Yetkili: ${data.yetkili}\n`;
-                content += `   Tarih: ${new Date(data.tarih).toLocaleString('tr-TR')}\n\n`;
+            if (command === 'borsa' || command === 'hisse') {
+                const symbol = args[0]?.toUpperCase();
+                if (!symbol) return message.reply(`${EMOJI.carpi} Bir hisse sembolü belirt! Örnek: \`${PREFIX}borsa AAPL\``);
+                try {
+                    const response = await safeFetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
+                    const data = await response.json();
+                    const result = data.chart?.result?.[0];
+                    if (!result) return message.reply(`${EMOJI.carpi} Hisse bulunamadı.`);
+                    const meta = result.meta;
+                    const fiyat = meta.regularMarketPrice;
+                    const oncekiKapanis = meta.chartPreviousClose || meta.previousClose;
+                    const degisim = oncekiKapanis ? ((fiyat - oncekiKapanis) / oncekiKapanis * 100) : 0;
+                    const embed = new EmbedBuilder().setColor(degisim >= 0 ? 0x00FF00 : 0xFF0000).setTitle(`${degisim >= 0 ? '📈' : '📉'} ${meta.symbol} - ${meta.shortName || meta.symbol}`).setDescription(`**Fiyat:** \`${fiyat} ${meta.currency}\`\n**Değişim:** \`${degisim >= 0 ? '+' : ''}${degisim.toFixed(2)}%\`\n**Önceki Kapanış:** \`${oncekiKapanis}\``).setFooter({ text: `Yahoo Finance ${EMOJI.trbayrak}` });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Hisse verisi alınamadı.`); }
+                return;
             }
-            const attachment = createLogFile(content, `gozaltindakiler-${Date.now()}.log`);
-            const dmSuccess = await sendDM(user, `${EMOJIS.kelepce} Gözaltındakiler listesi:`, attachment);
-            if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Liste DM'ine gönderildi!` });
-            else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi! DM'in kapalı olabilir.` });
-        }
-        else if (commandName === 'gozaltina-al') {
-            const target = interaction.options.getUser('kisi');
-            const sebep = interaction.options.getString('sebep') || 'Belirtilmedi';
-            const targetMember = await guild.members.fetch(target.id).catch(() => null);
-            if (!targetMember) return interaction.editReply({ content: `${EMOJIS.kirmizi} Kullanıcı sunucuda bulunamadı!` });
-            const role = guild.roles.cache.get(GOZALTINDA_ROLE_ID);
-            if (!role) return interaction.editReply({ content: `${EMOJIS.kirmizi} Gözaltında rolü bulunamadı!` });
-            await targetMember.roles.add(role, `Gözaltına alındı: ${sebep}`);
-            addGozaltinda(target.id, sebep, user.tag);
-            await interaction.editReply({ content: `${EMOJIS.kelepce} ${target.tag} gözaltına alındı. Sebep: ${sebep}` });
-            const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
-            if (logChannel) {
+
+            // ==================== HABER & BİLGİ ====================
+            if (command === 'haber') {
+                try {
+                    const response = await safeFetch('https://api.rss2json.com/v1/api.json?rss_url=https://www.trthaber.com/sondakika_articles.rss');
+                    const data = await response.json();
+                    if (data.items && data.items.length > 0) {
+                        let desc = '';
+                        data.items.slice(0, 5).forEach((a, i) => { desc += `${i+1}. **[${a.title}](${a.link})**\n`; });
+                        const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.bilgi} SON DAKİKA HABERLERİ`).setDescription(desc).setFooter({ text: `TRT Haber ${EMOJI.trbayrak}` });
+                        await message.reply({ embeds: [embed] });
+                    } else message.reply('❌ Haber bulunamadı.');
+                } catch (e) { message.reply('❌ Hata!'); }
+                return;
+            }
+
+            if (command === 'namaz') {
+                const sehir = args.join(' ') || 'Istanbul';
+                try {
+                    const response = await safeFetch(`https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(sehir)}&country=Turkey&method=13`);
+                    const data = await response.json();
+                    if (data.data && data.data.timings) {
+                        const t = data.data.timings;
+                        const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`🕌 NAMAZ VAKİTLERİ - ${sehir.toUpperCase()}`).setDescription(`🌅 **İmsak:** \`${t.Fajr}\`\n🌄 **Güneş:** \`${t.Sunrise}\`\n🌞 **Öğle:** \`${t.Dhuhr}\`\n🌇 **İkindi:** \`${t.Asr}\`\n🌆 **Akşam:** \`${t.Maghrib}\`\n🌃 **Yatsı:** \`${t.Isha}\``).setFooter({ text: `aladhan.com ${EMOJI.trbayrak}` });
+                        await message.reply({ embeds: [embed] });
+                    } else message.reply('❌ Namaz vakitleri alınamadı.');
+                } catch (e) { message.reply('❌ Hata!'); }
+                return;
+            }
+
+            if (command === 'wiki') {
+                const query = args.join(' ');
+                if (!query) return message.reply(`${EMOJI.carpi} Bir konu belirt! Örnek: \`${PREFIX}wiki Atatürk\``);
+                try {
+                    const response = await safeFetch(`https://tr.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`);
+                    const data = await response.json();
+                    if (data.title && data.extract) {
+                        const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`📖 ${data.title}`).setDescription(data.extract.length > 4000 ? data.extract.slice(0, 4000) + '...' : data.extract).setFooter({ text: `Wikipedia ${EMOJI.trbayrak}` });
+                        if (data.thumbnail?.source) embed.setThumbnail(data.thumbnail.source);
+                        await message.reply({ embeds: [embed] });
+                    } else message.reply('❌ Bulunamadı!');
+                } catch (e) { message.reply('❌ Hata!'); }
+                return;
+            }
+
+            if (command === 'tarihte-bugün' || command === 'tarihtebugun') {
+                try {
+                    const now = new Date();
+                    const ay = now.getMonth() + 1;
+                    const gun = now.getDate();
+                    const response = await safeFetch(`https://tr.wikipedia.org/api/rest_v1/feed/onthisday/events/${ay}/${gun}`);
+                    const data = await response.json();
+                    if (!data.events || data.events.length === 0) return message.reply(`${EMOJI.carpi} Bugün için tarihi olay bulunamadı.`);
+                    let desc = '';
+                    data.events.slice(0, 5).forEach((e) => { desc += `**${e.year}** - ${e.text.slice(0, 200)}\n\n`; });
+                    const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`📅 TARİHTE BUGÜN - ${gun}/${ay}`).setDescription(desc).setFooter({ text: `Wikipedia ${EMOJI.trbayrak}` });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Veri alınamadı.`); }
+                return;
+            }
+
+            // ==================== API KOMUTLARI ====================
+            if (command === 'github' || command === 'gh') {
+                const username = args[0];
+                if (!username) return message.reply(`${EMOJI.carpi} Bir GitHub kullanıcı adı belirt!`);
+                try {
+                    const response = await safeFetch(`https://api.github.com/users/${encodeURIComponent(username)}`);
+                    if (!response.ok) return message.reply(`${EMOJI.carpi} Kullanıcı bulunamadı.`);
+                    const data = await response.json();
+                    const embed = new EmbedBuilder().setColor(0x333333).setTitle(`${EMOJI.github} ${data.login}`).setURL(data.html_url).setThumbnail(data.avatar_url).addFields(
+                        { name: 'İsim', value: data.name || 'Yok', inline: true },
+                        { name: 'Repo', value: `\`${data.public_repos}\``, inline: true },
+                        { name: 'Takipçi', value: `\`${data.followers}\``, inline: true },
+                        { name: 'Takip', value: `\`${data.following}\``, inline: true },
+                        { name: 'Konum', value: data.location || 'Yok', inline: true },
+                        { name: 'Katılım', value: new Date(data.created_at).toLocaleDateString('tr-TR'), inline: true }
+                    ).setFooter({ text: `GitHub ${EMOJI.trbayrak}` });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} GitHub verisi alınamadı.`); }
+                return;
+            }
+
+            if (command === 'roblox') {
+                const username = args[0];
+                if (!username) return message.reply(`${EMOJI.carpi} Bir Roblox kullanıcı adı belirt!`);
+                try {
+                    const idResponse = await safeFetch('https://users.roblox.com/v1/usernames/users', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ usernames: [username], excludeBannedUsers: false })
+                    });
+                    const idData = await idResponse.json();
+                    if (!idData.data || idData.data.length === 0) return message.reply(`${EMOJI.carpi} Kullanıcı bulunamadı.`);
+                    const user = idData.data[0];
+                    const userIdR = user.id;
+                    const userResponse = await safeFetch(`https://users.roblox.com/v1/users/${userIdR}`);
+                    const userData = await userResponse.json();
+                    const avatarResponse = await safeFetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userIdR}&size=420x420&format=Png&isCircular=false`);
+                    const avatarData = await avatarResponse.json();
+                    const avatarUrl = avatarData.data?.[0]?.imageUrl || `https://www.roblox.com/headshot-thumbnail/image?userId=${userIdR}&width=420&height=420&format=png`;
+                    const embed = new EmbedBuilder().setColor(0x00B2FF).setTitle(`${EMOJI.roblox} ROBLOX - ${userData.name}`).setThumbnail(avatarUrl).addFields(
+                        { name: 'ID', value: `\`${userIdR}\``, inline: true },
+                        { name: 'Kullanıcı', value: userData.name, inline: true },
+                        { name: 'Görünen Ad', value: userData.displayName || userData.name, inline: true },
+                        { name: 'Profil', value: `[Tıkla](https://www.roblox.com/users/${userIdR}/profile)`, inline: true },
+                        { name: 'Hesap Oluşturma', value: userData.created ? new Date(userData.created).toLocaleDateString('tr-TR') : 'Bilinmiyor', inline: true }
+                    ).setFooter({ text: `Roblox ${EMOJI.trbayrak}` });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Roblox API hatası!`); }
+                return;
+            }
+
+            if (command === 'minecraft' || command === 'mc') {
+                const player = args[0];
+                if (!player) return message.reply(`${EMOJI.carpi} Bir oyuncu adı belirt!`);
+                try {
+                    const response = await safeFetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(player)}`);
+                    const data = await response.json();
+                    if (!data || !data.id) return message.reply(`${EMOJI.carpi} Oyuncu bulunamadı.`);
+                    const uuid = data.id;
+                    const embed = new EmbedBuilder().setColor(0x00B2FF).setTitle(`${EMOJI.minecraft} MINECRAFT - ${data.name}`).setDescription(`**Oyuncu:** ${data.name}\n**UUID:** \`${uuid}\``).setThumbnail(`https://crafatar.com/avatars/${uuid}?size=256&overlay`).setImage(`https://crafatar.com/renders/body/${uuid}?overlay=true`).setFooter({ text: `Minecraft ${EMOJI.trbayrak}` });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Minecraft API hatası!`); }
+                return;
+            }
+
+            if (command === 'deprem') {
+                try {
+                    const response = await safeFetch('https://api.orhanaydogdu.com.tr/deprem/kandilli/live?limit=5');
+                    const data = await response.json();
+                    const depremler = data.result || data;
+                    if (!depremler || depremler.length === 0) return message.reply(`${EMOJI.carpi} Deprem verisi bulunamadı.`);
+                    let desc = '';
+                    depremler.slice(0, 5).forEach((d, i) => {
+                        const mag = d.mag || d.magnitude || '?';
+                        const yer = d.title || d.place || 'Bilinmiyor';
+                        const tarih = d.date || d.time || '';
+                        desc += `**${i + 1}.** \`${mag}\` - ${yer}\n`;
+                        if (tarih) desc += `   📅 ${new Date(tarih).toLocaleString('tr-TR')}\n`;
+                    });
+                    const embed = new EmbedBuilder().setColor(0xFF6B6B).setTitle(`${EMOJI.deprem} SON DEPREMLER`).setDescription(desc).setFooter({ text: `Kandilli Rasathanesi ${EMOJI.trbayrak}` });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Deprem verisi alınamadı.`); }
+                return;
+            }
+
+            if (command === 'ülke' || command === 'ulke' || command === 'country') {
+                const ulke = args.join(' ');
+                if (!ulke) return message.reply(`${EMOJI.carpi} Bir ülke adı belirt! Örnek: \`${PREFIX}ülke Türkiye\``);
+                try {
+                    const response = await safeFetch(`https://restcountries.com/v3.1/name/${encodeURIComponent(ulke)}`);
+                    if (!response.ok) return message.reply(`${EMOJI.carpi} Ülke bulunamadı.`);
+                    const data = await response.json();
+                    const c = data[0];
+                    const diller = c.languages ? Object.values(c.languages).join(', ') : 'Yok';
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`🌍 ${c.name.common}`).setThumbnail(c.flags?.png || c.flags?.svg).addFields(
+                        { name: 'Resmi Ad', value: c.name.official || c.name.common, inline: true },
+                        { name: 'Başkent', value: c.capital?.[0] || 'Yok', inline: true },
+                        { name: 'Bölge', value: c.region || 'Yok', inline: true },
+                        { name: 'Nüfus', value: `\`${c.population.toLocaleString('tr-TR')}\``, inline: true },
+                        { name: 'Alan', value: `\`${c.area.toLocaleString('tr-TR')} km²\``, inline: true },
+                        { name: 'Diller', value: diller.slice(0, 100), inline: true }
+                    ).setFooter({ text: `REST Countries ${EMOJI.trbayrak}` });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Ülke verisi alınamadı.`); }
+                return;
+            }
+
+            if (command === 'nasa') {
+                const apiKey = process.env.NASA_API_KEY;
+                if (!apiKey) return message.reply(`${EMOJI.carpi} **NASA_API_KEY** eksik!`);
+                try {
+                    const response = await safeFetch(`https://api.nasa.gov/planetary/apod?api_key=${apiKey}`);
+                    const data = await response.json();
+                    if (data.error) return message.reply(`${EMOJI.carpi} NASA API hatası: ${data.error.message}`);
+                    const embed = new EmbedBuilder().setColor(0x0B3D91).setTitle(`${EMOJI.nasa} NASA - ${data.title}`).setDescription(data.explanation ? data.explanation.slice(0, 1000) : 'Açıklama yok').setFooter({ text: `NASA APOD ${EMOJI.trbayrak} • ${data.date}` });
+                    if (data.media_type === 'image') embed.setImage(data.url);
+                    else if (data.media_type === 'video') embed.addFields({ name: '📺 Video', value: `[Tıkla](${data.url})` });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} NASA verisi alınamadı.`); }
+                return;
+            }
+
+            // ==================== TARAMA (DÜZELTİLDİ) ====================
+            if (command === 'tarama' || command === 'tara') {
+                let url = args[0];
+                if (!url) return message.reply(`${EMOJI.carpi} Bir URL belirt! Örnek: \`${PREFIX}tarama google.com\``);
+                if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url;
+                const yukleniyorMsg = await message.channel.send(`${EMOJI.yukleniyor} **Site taranıyor...** \`${url}\``);
+                try {
+                    const startTime = Date.now();
+                    const response = await safeFetch(url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 (MELEZYA Bot Scanner)' } }, 15000);
+                    const sure = Date.now() - startTime;
+                    const html = await response.text();
+                    const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+                    const title = titleMatch ? titleMatch[1].trim().slice(0, 100) : 'Yok';
+                    const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
+                    const metaDesc = descMatch ? descMatch[1].trim().slice(0, 200) : 'Yok';
+                    const teknolojiler = [];
+                    if (html.includes('wp-content') || html.includes('wordpress')) teknolojiler.push('WordPress');
+                    if (html.includes('react') || html.includes('__REACT')) teknolojiler.push('React');
+                    if (html.includes('next.js') || html.includes('__NEXT_DATA__')) teknolojiler.push('Next.js');
+                    if (html.includes('vue') || html.includes('__VUE__')) teknolojiler.push('Vue.js');
+                    if (html.includes('angular')) teknolojiler.push('Angular');
+                    if (html.includes('bootstrap')) teknolojiler.push('Bootstrap');
+                    if (html.includes('jquery')) teknolojiler.push('jQuery');
+                    if (response.headers.get('server')?.includes('cloudflare')) teknolojiler.push('Cloudflare');
+                    const guvenlik = {
+                        hsts: response.headers.get('strict-transport-security') ? '✅' : '❌',
+                        csp: response.headers.get('content-security-policy') ? '✅' : '❌',
+                        xframe: response.headers.get('x-frame-options') ? '✅' : '❌',
+                        xcontent: response.headers.get('x-content-type-options') ? '✅' : '❌',
+                        xxss: response.headers.get('x-xss-protection') ? '✅' : '❌',
+                        referrer: response.headers.get('referrer-policy') ? '✅' : '❌'
+                    };
+                    let robotsInfo = 'Yok';
+                    try {
+                        const robotsRes = await safeFetch(new URL('/robots.txt', url).href, {}, 5000);
+                        if (robotsRes.ok) {
+                            const robotsTxt = await robotsRes.text();
+                            robotsInfo = `Var (${robotsTxt.split('\n').length} satır)`;
+                        }
+                    } catch (e) {}
+                    let sitemapInfo = 'Yok';
+                    try {
+                        const sitemapRes = await safeFetch(new URL('/sitemap.xml', url).href, {}, 5000);
+                        if (sitemapRes.ok) {
+                            const sitemapTxt = await sitemapRes.text();
+                            const urlCount = (sitemapTxt.match(/<url>/g) || []).length;
+                            sitemapInfo = `Var (${urlCount} URL)`;
+                        }
+                    } catch (e) {}
+                    let apiInfo = 'Bulunamadı';
+                    const apiPaths = ['/openapi.json', '/swagger.json', '/api-docs', '/swagger-ui.html'];
+                    for (const path of apiPaths) {
+                        try {
+                            const apiRes = await safeFetch(new URL(path, url).href, {}, 5000);
+                            if (apiRes.ok) {
+                                const apiText = await apiRes.text();
+                                if (apiText.includes('openapi') || apiText.includes('swagger')) {
+                                    apiInfo = `✅ Bulundu: \`${path}\``;
+                                    break;
+                                }
+                            }
+                        } catch (e) {}
+                    }
+                    const embed = new EmbedBuilder()
+                        .setColor(0x4FC3F7)
+                        .setTitle(`🔍 SİTE TARAMA: ${new URL(url).hostname}`)
+                        .setDescription(`**URL:** \`${url}\`\n**Durum:** \`${response.status} ${response.statusText}\`\n**Yanıt Süresi:** \`${sure}ms\``)
+                        .addFields(
+                            { name: '📄 Sayfa Başlığı', value: `\`${title}\``, inline: false },
+                            { name: '📝 Meta Açıklama', value: `\`${metaDesc}\``, inline: false },
+                            { name: '🖥️ Sunucu', value: `\`${response.headers.get('server') || 'Bilinmiyor'}\``, inline: true },
+                            { name: '📦 Content-Type', value: `\`${response.headers.get('content-type') || 'Bilinmiyor'}\``, inline: true },
+                            { name: '⚙️ Teknolojiler', value: teknolojiler.length > 0 ? teknolojiler.join(', ') : 'Bilinmiyor', inline: false },
+                            { name: '🔒 Güvenlik Başlıkları', value: `HSTS: ${guvenlik.hsts} | CSP: ${guvenlik.csp} | X-Frame: ${guvenlik.xframe}\nX-Content: ${guvenlik.xcontent} | X-XSS: ${guvenlik.xxss} | Referrer: ${guvenlik.referrer}`, inline: false },
+                            { name: '🤖 robots.txt', value: `\`${robotsInfo}\``, inline: true },
+                            { name: '🗺️ sitemap.xml', value: `\`${sitemapInfo}\``, inline: true },
+                            { name: '📚 OpenAPI/Swagger', value: apiInfo, inline: false }
+                        )
+                        .setFooter({ text: `${FOOTER} • Sadece herkese açık bilgiler` })
+                        .setTimestamp();
+                    await yukleniyorMsg.edit({ content: null, embeds: [embed] });
+                } catch (e) {
+                    console.error('Tarama hatası:', e);
+                    await yukleniyorMsg.edit({ content: `${EMOJI.carpi} Site taranamadı: \`${e.message}\`` });
+                }
+                return;
+            }
+
+            // ==================== CIPHER ====================
+            if (command === 'cipher') {
+                const altKomut = args[0]?.toLowerCase();
+                const tip = args[1]?.toLowerCase();
+                const metin = args.slice(3).join(' ');
+                if (!altKomut) {
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.encode} CIPHER KOMUTLARI`).setDescription(`**Kullanım:**\n\`${PREFIX}cipher encode base64 <metin>\`\n\`${PREFIX}cipher decode base64 <metin>\`\n\`${PREFIX}cipher hash <metin>\`\n\`${PREFIX}cipher timestamp\``).setFooter({ text: FOOTER });
+                    return message.reply({ embeds: [embed] });
+                }
+                if (altKomut === 'encode') {
+                    if (!tip || !metin) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}cipher encode base64 <metin>\``);
+                    let sonuc = '';
+                    if (tip === 'base64') sonuc = Buffer.from(metin, 'utf-8').toString('base64');
+                    else if (tip === 'hex') sonuc = Buffer.from(metin, 'utf-8').toString('hex');
+                    else if (tip === 'url') sonuc = encodeURIComponent(metin);
+                    else if (tip === 'binary') sonuc = metin.split('').map(c => c.charCodeAt(0).toString(2).padStart(8, '0')).join(' ');
+                    else return message.reply(`${EMOJI.carpi} Desteklenen tipler: \`base64\`, \`hex\`, \`url\`, \`binary\``);
+                    const embed = new EmbedBuilder().setColor(0x00FF00).setTitle(`${EMOJI.encode} ENCODE - ${tip.toUpperCase()}`).addFields(
+                        { name: '📥 Girdi', value: `\`\`\`${metin.slice(0, 500)}\`\`\`` },
+                        { name: '📤 Sonuç', value: `\`\`\`${sonuc.slice(0, 1000)}\`\`\`` }
+                    ).setFooter({ text: FOOTER });
+                    return message.reply({ embeds: [embed] });
+                }
+                if (altKomut === 'decode') {
+                    if (!tip || !metin) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}cipher decode base64 <metin>\``);
+                    try {
+                        let sonuc = '';
+                        if (tip === 'base64') sonuc = Buffer.from(metin, 'base64').toString('utf-8');
+                        else if (tip === 'hex') sonuc = Buffer.from(metin, 'hex').toString('utf-8');
+                        else if (tip === 'url') sonuc = decodeURIComponent(metin);
+                        else if (tip === 'binary') sonuc = metin.split(' ').map(b => String.fromCharCode(parseInt(b, 2))).join('');
+                        else return message.reply(`${EMOJI.carpi} Desteklenen tipler: \`base64\`, \`hex\`, \`url\`, \`binary\``);
+                        const embed = new EmbedBuilder().setColor(0x00FF00).setTitle(`${EMOJI.decode} DECODE - ${tip.toUpperCase()}`).addFields(
+                            { name: '📥 Girdi', value: `\`\`\`${metin.slice(0, 500)}\`\`\`` },
+                            { name: '📤 Sonuç', value: `\`\`\`${sonuc.slice(0, 1000)}\`\`\`` }
+                        ).setFooter({ text: FOOTER });
+                        return message.reply({ embeds: [embed] });
+                    } catch (e) {
+                        return message.reply(`${EMOJI.carpi} Decode başarısız: \`${e.message}\``);
+                    }
+                }
+                if (altKomut === 'hash') {
+                    const hashMetin = args.slice(2).join(' ');
+                    if (!hashMetin) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}cipher hash <metin>\``);
+                    const md5 = crypto.createHash('md5').update(hashMetin).digest('hex');
+                    const sha1 = crypto.createHash('sha1').update(hashMetin).digest('hex');
+                    const sha256 = crypto.createHash('sha256').update(hashMetin).digest('hex');
+                    const sha512 = crypto.createHash('sha512').update(hashMetin).digest('hex');
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.encode} CIPHER - HASH`).addFields(
+                        { name: 'MD5', value: `\`${md5}\`` },
+                        { name: 'SHA1', value: `\`${sha1}\`` },
+                        { name: 'SHA256', value: `\`${sha256}\`` },
+                        { name: 'SHA512', value: `\`${sha512}\`` }
+                    ).setFooter({ text: FOOTER });
+                    return message.reply({ embeds: [embed] });
+                }
+                if (altKomut === 'timestamp' || altKomut === 'ts') {
+                    const now = Math.floor(Date.now() / 1000);
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.saat} CIPHER - TIMESTAMP`).setDescription(`**Saniye:** \`${now}\`\n**Milisaniye:** \`${Date.now()}\`\n**Discord:** \`<t:${now}:f>\` → <t:${now}:f>\n**Discord (R):** \`<t:${now}:R>\` → <t:${now}:R>`).setFooter({ text: FOOTER });
+                    return message.reply({ embeds: [embed] });
+                }
+                return message.reply(`${EMOJI.carpi} Bilinmeyen komut. \`${PREFIX}cipher\` yaz.`);
+            }
+
+            // ==================== YARDIM ====================
+            if (command === 'yardim' || command === 'yardım' || command === 'help') {
+                if (args[0]) {
+                    const arananKomut = args[0].toLowerCase();
+                    const komutBilgileri = {
+                        'apoyabas': { aciklama: 'Apo sayacını arttırır.', kullanim: `${PREFIX}apoyabas` },
+                        'milyoner': { aciklama: '13 soruluk bilgi yarışması başlatır.', kullanim: `${PREFIX}milyoner` },
+                        'rusruleti': { aciklama: 'Rus ruleti oynar (istatistikli).', kullanim: `${PREFIX}rusruleti` },
+                        'ship': { aciklama: 'İki kişi arasında aşk ölçer.', kullanim: `${PREFIX}ship @kullanıcı` },
+                        '1vs1': { aciklama: 'Düello başlatır.', kullanim: `${PREFIX}1vs1 @kullanıcı` },
+                        'temizle': { aciklama: 'Belirtilen sayıda mesaj siler.', kullanim: `${PREFIX}temizle <1-100>` },
+                        'kick': { aciklama: 'Kullanıcıyı sunucudan atar.', kullanim: `${PREFIX}kick @kullanıcı [sebep]` },
+                        'ban': { aciklama: 'Kullanıcıyı sunucudan yasaklar.', kullanim: `${PREFIX}ban @kullanıcı [sebep]` },
+                        'uyar': { aciklama: 'Kullanıcıya uyarı verir (kademeli rol).', kullanim: `${PREFIX}uyar @kullanıcı [sebep]` },
+                        'uyarı-sil': { aciklama: 'Kullanıcının belirtilen uyarısını siler.', kullanim: `${PREFIX}uyarı-sil @kullanıcı <numara>` },
+                        'hava': { aciklama: 'Belirtilen şehrin hava durumunu gösterir.', kullanim: `${PREFIX}hava [şehir]` },
+                        'döviz': { aciklama: 'Güncel döviz kurlarını gösterir.', kullanim: `${PREFIX}döviz` },
+                        'kripto': { aciklama: 'Güncel kripto para fiyatlarını gösterir.', kullanim: `${PREFIX}kripto` },
+                        'wiki': { aciklama: 'Wikipedia\'dan bilgi getirir.', kullanim: `${PREFIX}wiki <konu>` },
+                        'github': { aciklama: 'GitHub kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}github <kullanıcı>` },
+                        'roblox': { aciklama: 'Roblox kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}roblox <kullanıcı>` },
+                        'minecraft': { aciklama: 'Minecraft oyuncu bilgilerini gösterir.', kullanim: `${PREFIX}minecraft <oyuncu>` },
+                        'borsa': { aciklama: 'Hisse senedi fiyatını gösterir.', kullanim: `${PREFIX}borsa <sembol>` },
+                        'deprem': { aciklama: 'Son depremleri listeler.', kullanim: `${PREFIX}deprem` },
+                        'ülke': { aciklama: 'Ülke bilgilerini gösterir.', kullanim: `${PREFIX}ülke <ülke>` },
+                        'nasa': { aciklama: 'NASA APOD fotoğrafını gösterir.', kullanim: `${PREFIX}nasa` },
+                        'banner': { aciklama: 'Kullanıcının banner\'ını gösterir.', kullanim: `${PREFIX}banner [@kullanıcı]` },
+                        'cipher': { aciklama: 'Encode/decode/hash/timestamp yapar.', kullanim: `${PREFIX}cipher encode/decode/hash/timestamp` },
+                        'tarama': { aciklama: 'Bir siteyi güvenlik açısından tarar.', kullanim: `${PREFIX}tarama <url>` },
+                        'profil': { aciklama: 'Kullanıcı profilini gösterir.', kullanim: `${PREFIX}profil [@kullanıcı]` },
+                        'atam': { aciklama: 'Rastgele Atatürk fotoğrafı ve sözü gönderir.', kullanim: `${PREFIX}atam` }
+                    };
+                    const bilgi = komutBilgileri[arananKomut];
+                    if (!bilgi) return message.reply(`${EMOJI.carpi} **\`${arananKomut}\`** komutu hakkında bilgi bulunamadı!`);
+                    const embed = new EmbedBuilder()
+                        .setColor(0x4FC3F7)
+                        .setTitle(`📖 \`${PREFIX}${arananKomut}\` KOMUTU`)
+                        .addFields(
+                            { name: '📝 Açıklama', value: bilgi.aciklama, inline: false },
+                            { name: '💡 Kullanım', value: `\`${bilgi.kullanim}\``, inline: false }
+                        )
+                        .setFooter({ text: `${FOOTER} • ${PREFIX}yardim <komut>` })
+                        .setTimestamp();
+                    await message.reply({ embeds: [embed] });
+                    return;
+                }
                 const embed = new EmbedBuilder()
-                    .setColor(0xFF0000).setTitle(`${EMOJIS.kelepce} GÖZALTINA ALINDI`)
-                    .setDescription(`**${target.tag}** gözaltına alındı.`)
+                    .setColor(0xE30A17)
+                    .setTitle(`${EMOJI.kale} MELEZYA BOT KOMUTLARI ${EMOJI.trbayrak}`)
+                    .setDescription(`Merhaba **${message.author.username}**! 👋\nToplam **80+ komut** ile hizmetindeyim.\n\n📖 **Detaylı yardım için:** \`${PREFIX}yardim <komut>\``)
                     .addFields(
-                        { name: 'Kullanıcı', value: `${target} (${target.id})`, inline: true },
-                        { name: 'Yetkili', value: `${user}`, inline: true },
-                        { name: 'Sebep', value: sebep }
-                    ).setTimestamp().setFooter({ text: `MELEZYA Güvenlik ${EMOJIS.trbayrak}` });
-                await logChannel.send({ embeds: [embed], flags: 4096 });
+                        { name: `${EMOJI.kalkan} MODERASYON (ADMIN)`, value: '`temizle` `kick` `ban` `unban` `uyar` `uyarılar` `uyarı-sil` `sustur` `susturma-kaldır` `slowmode` `kanal-kilit` `kanal-aç`', inline: false },
+                        { name: `${EMOJI.silah} EĞLENCE`, value: '`milyoner` `rusruleti` `ship` `1vs1` `apoyabas`', inline: false },
+                        { name: `${EMOJI.trbayrak} MİLLİ DEĞERLER`, value: '`atam` `gencligehitabe` `istiklalmarsi` `gununsozu` `ataturkbilgi` `cumhuriyet` `nutuk` `bayrak` `saygi` `vatan`', inline: false },
+                        { name: `${EMOJI.dolar} FİNANS & HAVA`, value: '`döviz` `hava` `kripto` `borsa`', inline: false },
+                        { name: `${EMOJI.bilgi} HABER & BİLGİ`, value: '`haber` `namaz` `wiki` `tarihte-bugün`', inline: false },
+                        { name: `${EMOJI.github} API`, value: '`github` `roblox` `minecraft` `deprem` `ülke` `nasa`', inline: false },
+                        { name: `${EMOJI.member} BİLGİ`, value: '`ping` `zaman` `kullanıcı` `sunucu` `avatar` `banner` `bot` `aktif` `profil` `günlük-istatistik`', inline: false },
+                        { name: `${EMOJI.encode} CIPHER & ARAÇLAR`, value: '`cipher encode base64 <metin>` `cipher decode base64 <metin>` `cipher hash <metin>` `cipher timestamp` `tarama <url>`', inline: false },
+                        { name: `${EMOJI.ayarlar} YÖNETİM (ADMIN)`, value: '`yedek` `ayar aç/kapa/durum` `debug`', inline: false }
+                    )
+                    .setFooter({ text: `${FOOTER} • Toplam 80+ komut • İyi eğlenceler!` })
+                    .setTimestamp();
+                await message.reply({ embeds: [embed] });
+                return;
             }
+
+        } catch (e) {
+            console.error('Komut hatası:', e);
+            try {
+                db.addErrorLog('messageCreate', e.message, e.stack, message.author.id, message.guild?.id || '');
+            } catch (err) {}
+            try {
+                await message.reply(`${EMOJI.carpi} Bir hata oluştu! Hata kaydedildi.`);
+            } catch (err) {}
         }
-        else if (commandName === 'gozaltindan-cikar') {
-            const target = interaction.options.getUser('kisi');
-            const targetMember = await guild.members.fetch(target.id).catch(() => null);
-            if (!targetMember) return interaction.editReply({ content: `${EMOJIS.kirmizi} Kullanıcı sunucuda bulunamadı!` });
-            const role = guild.roles.cache.get(GOZALTINDA_ROLE_ID);
-            if (!role) return interaction.editReply({ content: `${EMOJIS.kirmizi} Gözaltında rolü bulunamadı!` });
-            await targetMember.roles.remove(role, 'Gözaltından çıkarıldı');
-            removeGozaltinda(target.id);
-            await interaction.editReply({ content: `${EMOJIS.yesil} ${target.tag} gözaltından çıkarıldı.` });
-            const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
-            if (logChannel) {
-                const embed = new EmbedBuilder()
-                    .setColor(0x00FF00).setTitle(`${EMOJIS.yesil} GÖZALTINDAN ÇIKARILDI`)
-                    .setDescription(`**${target.tag}** gözaltından çıkarıldı.`)
-                    .addFields(
-                        { name: 'Kullanıcı', value: `${target} (${target.id})`, inline: true },
-                        { name: 'Yetkili', value: `${user}`, inline: true }
-                    ).setTimestamp().setFooter({ text: `MELEZYA Güvenlik ${EMOJIS.trbayrak}` });
-                await logChannel.send({ embeds: [embed], flags: 4096 });
-            }
-        }
-        else if (commandName === 'guvenlik-tara') {
-            let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║          MELEZYA GÜVENLİK - TAM SUNUCU TARAMASI             ║\n`;
-            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
-            content += `Tarih: ${new Date().toLocaleString('tr-TR')}\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `ROLLER (${guild.roles.cache.size})\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            for (const [id, role] of guild.roles.cache.sort((a, b) => b.position - a.position)) {
-                const perms = role.permissions.toArray();
-                const riskli = perms.includes('Administrator') || perms.includes('ManageGuild') || perms.includes('ManageRoles') || perms.includes('BanMembers') || perms.includes('KickMembers');
-                content += `${riskli ? '⚠️' : '  '} ${role.name} (${id})\n`;
-                content += `   Renk: ${role.hexColor} | Üye: ${role.members.size} | Konum: ${role.position}\n`;
-                if (riskli) content += `   Yetkiler: ${perms.join(', ')}\n`;
-            }
-            content += `\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `KANALLAR (${guild.channels.cache.size})\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            for (const [id, channel] of guild.channels.cache) content += `${channel.name} (${id}) - Tip: ${channel.type}\n`;
-            content += `\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `BOTLAR\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            for (const [id, bot] of guild.members.cache.filter(m => m.user.bot)) {
-                const perms = bot.permissions.toArray();
-                const riskli = perms.includes('Administrator');
-                content += `${riskli ? '⚠️' : '  '} ${bot.user.tag} (${id})\n`;
-                content += `   Yetkiler: ${perms.join(', ') || 'Yok'}\n`;
-            }
-            content += `\n`;
-            const webhooks = await guild.fetchWebhooks();
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `WEBHOOK'LAR (${webhooks.size})\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            for (const [id, wh] of webhooks) {
-                content += `${wh.name} (${id})\n`;
-                content += `   Kanal: ${wh.channel?.name || 'Bilinmiyor'} | Sahip: ${wh.owner?.tag || 'Bilinmiyor'}\n`;
-            }
-            content += `\n`;
-            const invites = await guild.invites.fetch();
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `DAVETLER (${invites.size})\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            for (const [code, inv] of invites) {
-                content += `${code} - ${inv.uses} kullanım\n`;
-                content += `   Kanal: ${inv.channel?.name || 'Bilinmiyor'} | Davet eden: ${inv.inviter?.tag || 'Bilinmiyor'}\n`;
-            }
-            const attachment = createLogFile(content, `guvenlik-tarama-${Date.now()}.log`);
-            const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} Güvenlik tarama raporu:`, attachment);
-            if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Tarama raporu DM'ine gönderildi!` });
-            else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
-        }
-        else if (commandName === 'bot-denetle') {
-            const bots = guild.members.cache.filter(m => m.user.bot);
-            let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║              MELEZYA GÜVENLİK - BOT DENETİMİ                ║\n`;
-            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
-            content += `Toplam Bot: ${bots.size}\n\n`;
-            for (const [id, bot] of bots) {
-                const perms = bot.permissions.toArray();
-                content += `🤖 ${bot.user.tag} (${id})\n`;
-                content += `   Sunucuya katılma: ${bot.joinedAt?.toLocaleString('tr-TR') || 'Bilinmiyor'}\n`;
-                content += `   Roller: ${bot.roles.cache.map(r => r.name).join(', ') || 'Yok'}\n`;
-                content += `   Yetkiler: ${perms.join(', ') || 'Yok'}\n`;
-                content += `   Administrator: ${perms.includes('Administrator') ? 'EVET ⚠️' : 'Hayır'}\n\n`;
-            }
-            const attachment = createLogFile(content, `bot-denetim-${Date.now()}.log`);
-            const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} Bot denetim raporu:`, attachment);
-            if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Bot denetim raporu DM'ine gönderildi!` });
-            else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
-        }
-        else if (commandName === 'izin-denetle') {
-            const rol = interaction.options.getRole('rol');
-            const kanal = interaction.options.getChannel('kanal');
-            if (!rol && !kanal) return interaction.editReply({ content: `${EMOJIS.kirmizi} Bir rol veya kanal belirtmelisin!` });
-            let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║            MELEZYA GÜVENLİK - İZİN DENETİMİ                 ║\n`;
-            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
-            if (rol) {
-                content += `ROL: ${rol.name} (${rol.id})\n`;
-                content += `Renk: ${rol.hexColor}\n`;
-                content += `Üye: ${rol.members.size}\n`;
-                content += `Yetkiler: ${rol.permissions.toArray().join(', ') || 'Yok'}\n`;
-                content += `Konum: ${rol.position}\n`;
-                content += `Mentionable: ${rol.mentionable}\n`;
-                content += `Hoist: ${rol.hoist}\n\n`;
-            }
-            if (kanal) {
-                content += `KANAL: ${kanal.name} (${kanal.id})\n`;
-                content += `Tip: ${kanal.type}\n`;
-                content += `Kategori: ${kanal.parent?.name || 'Yok'}\n`;
-                content += `İzinler:\n`;
-                for (const [id, po] of kanal.permissionOverwrites.cache) {
-                    const target = po.type === 0 ? guild.roles.cache.get(po.id)?.name : guild.members.cache.get(po.id)?.user?.tag;
-                    content += `  ${target || po.id}:\n`;
-                    content += `    Allow: ${po.allow.toArray().join(', ') || 'Yok'}\n`;
-                    content += `    Deny: ${po.deny.toArray().join(', ') || 'Yok'}\n`;
+    });
+    
+    // =========================== BUTON ETKİLEŞİMLERİ ===========================
+    client.on('interactionCreate', async (interaction) => {
+        if (!interaction.isButton()) return;
+        try {
+            if (interaction.customId.startsWith('duello_')) {
+                const parts = interaction.customId.split('_');
+                const tip = parts[1];
+                const davetEden = parts[2];
+                const davetEdilen = parts[3];
+                if (interaction.user.id !== davetEdilen) {
+                    return interaction.reply({ content: `${EMOJI.carpi} Bu düello sana ait değil!`, flags: EPHEMERAL });
+                }
+                if (tip === 'red') {
+                    return interaction.update({
+                        embeds: [new EmbedBuilder().setColor(0x2B2D31).setTitle(`${EMOJI.carpi} DÜELLO REDDEDİLDİ`).setDescription(`**${interaction.user.username}** düelloyu reddetti.`).setFooter({ text: FOOTER })],
+                        components: []
+                    });
+                }
+                if (tip === 'kabul') {
+                    const kazanan = Math.random() < 0.5 ? davetEden : davetEdilen;
+                    const kazananUser = await client.users.fetch(kazanan).catch(() => null);
+                    const kaybedenUser = await client.users.fetch(kazanan === davetEden ? davetEdilen : davetEden).catch(() => null);
+                    const embed = new EmbedBuilder()
+                        .setColor(0xFFD700)
+                        .setTitle(`${EMOJI.kazanan} DÜELLO SONUCU ${EMOJI.kazanan}`)
+                        .setDescription(`⚔️ **${kazananUser?.username || 'Bilinmiyor'}** kazandı!\n\n💀 **${kaybedenUser?.username || 'Bilinmiyor'}** kaybetti!`)
+                        .setFooter({ text: FOOTER })
+                        .setTimestamp();
+                    return interaction.update({ embeds: [embed], components: [] });
                 }
             }
-            const attachment = createLogFile(content, `izin-denetim-${Date.now()}.log`);
-            const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} İzin denetim raporu:`, attachment);
-            if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} İzin denetim raporu DM'ine gönderildi!` });
-            else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
+        } catch (e) {
+            console.error('Buton hatası:', e);
         }
-        else if (commandName === 'uye-denetle') {
-            const target = interaction.options.getUser('kisi');
-            const targetMember = await guild.members.fetch(target.id).catch(() => null);
-            if (!targetMember) return interaction.editReply({ content: `${EMOJIS.kirmizi} Kullanıcı sunucuda bulunamadı!` });
-            const userData = db.getUser(target.id);
-            const warns = db.getWarns(target.id);
-            const isCustody = db.isInCustody(target.id);
-            let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║              MELEZYA GÜVENLİK - ÜYE DENETİMİ                ║\n`;
-            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
-            content += `Kullanıcı: ${target.tag} (${target.id})\n`;
-            content += `Görünen Ad: ${targetMember.displayName}\n`;
-            content += `Bot mu: ${target.bot ? 'Evet' : 'Hayır'}\n`;
-            content += `Hesap Oluşturma: ${target.createdAt.toLocaleString('tr-TR')}\n`;
-            content += `Sunucuya Katılma: ${targetMember.joinedAt?.toLocaleString('tr-TR') || 'Bilinmiyor'}\n`;
-            content += `Roller: ${targetMember.roles.cache.map(r => r.name).join(', ') || 'Yok'}\n`;
-            content += `En Yüksek Rol: ${targetMember.roles.highest.name}\n`;
-            content += `Durum: ${targetMember.presence?.status || 'offline'}\n`;
-            content += `Ses Kanalı: ${targetMember.voice.channel?.name || 'Yok'}\n`;
-            content += `Gözaltında: ${isCustody ? 'EVET' : 'Hayır'}\n`;
-            content += `\n📊 SQLite Verileri:\n`;
-            content += `   Mesaj Sayısı: ${userData?.messageCount || 0}\n`;
-            content += `   Ses Süresi: ${userData?.voiceMinutes || 0} dk\n`;
-            content += `   Uyarı Sayısı: ${warns.length}\n`;
-            const attachment = createLogFile(content, `uye-denetim-${target.id}-${Date.now()}.log`);
-            const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} Üye denetim raporu:`, attachment);
-            if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Üye denetim raporu DM'ine gönderildi!` });
-            else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
-        }
-        else if (commandName === 'riskli-uyeler') {
-            const riskli = [];
-            for (const [id, m] of guild.members.cache) {
-                if (m.user.bot) continue;
-                const perms = m.permissions.toArray();
-                const riskliPerm = perms.includes('Administrator') || perms.includes('ManageGuild') || perms.includes('ManageRoles') || perms.includes('BanMembers') || perms.includes('KickMembers');
-                const yeniHesap = (Date.now() - m.user.createdTimestamp) < 7 * 24 * 60 * 60 * 1000;
-                const gozalti = gozaltinda[id] ? true : false;
-                if (riskliPerm || yeniHesap || gozalti) riskli.push({ member: m, riskliPerm, yeniHesap, gozalti });
-            }
-            let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║             MELEZYA GÜVENLİK - RİSKLİ ÜYELER                 ║\n`;
-            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
-            content += `Toplam Riskli: ${riskli.length}\n\n`;
-            for (const r of riskli) {
-                content += `${r.member.user.tag} (${r.member.id})\n`;
-                if (r.riskliPerm) content += `   ⚠️ Yüksek yetkili\n`;
-                if (r.yeniHesap) content += `   ⚠️ Yeni hesap (< 7 gün)\n`;
-                if (r.gozalti) content += `   ⚠️ Gözaltında\n`;
-                content += `   Roller: ${r.member.roles.cache.map(ro => ro.name).join(', ') || 'Yok'}\n\n`;
-            }
-            const attachment = createLogFile(content, `riskli-uyeler-${Date.now()}.log`);
-            const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} Riskli üyeler raporu:`, attachment);
-            if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Riskli üyeler raporu DM'ine gönderildi!` });
-            else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
-        }
-        else if (commandName === 'davet-denetle') {
-            const invites = await guild.invites.fetch();
-            let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║            MELEZYA GÜVENLİK - DAVET DENETİMİ                 ║\n`;
-            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
-            content += `Toplam Davet: ${invites.size}\n\n`;
-            for (const [code, inv] of invites) {
-                content += `Kod: ${code}\n`;
-                content += `   Kanal: ${inv.channel?.name || 'Bilinmiyor'}\n`;
-                content += `   Davet Eden: ${inv.inviter?.tag || 'Bilinmiyor'} (${inv.inviter?.id || '?'})\n`;
-                content += `   Kullanım: ${inv.uses}/${inv.maxUses || '∞'}\n`;
-                content += `   Süre: ${inv.maxAge ? `${inv.maxAge} saniye` : 'Sınırsız'}\n`;
-                content += `   Geçici: ${inv.temporary ? 'Evet' : 'Hayır'}\n`;
-                content += `   Oluşturma: ${inv.createdAt?.toLocaleString('tr-TR') || 'Bilinmiyor'}\n\n`;
-            }
-            const attachment = createLogFile(content, `davet-denetim-${Date.now()}.log`);
-            const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} Davet denetim raporu:`, attachment);
-            if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Davet denetim raporu DM'ine gönderildi!` });
-            else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
-        }
-        else if (commandName === 'webhook-denetle') {
-            const webhooks = await guild.fetchWebhooks();
-            let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║           MELEZYA GÜVENLİK - WEBHOOK DENETİMİ                ║\n`;
-            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
-            content += `Toplam Webhook: ${webhooks.size}\n\n`;
-            for (const [id, wh] of webhooks) {
-                content += `İsim: ${wh.name} (${id})\n`;
-                content += `   Kanal: ${wh.channel?.name || 'Bilinmiyor'}\n`;
-                content += `   Sahip: ${wh.owner?.tag || 'Bilinmiyor'} (${wh.owner?.id || '?'})\n`;
-                content += `   Avatar: ${wh.avatarURL() || 'Yok'}\n`;
-                content += `   Token: ${wh.token ? 'Var' : 'Yok'}\n\n`;
-            }
-            const attachment = createLogFile(content, `webhook-denetim-${Date.now()}.log`);
-            const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} Webhook denetim raporu:`, attachment);
-            if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Webhook denetim raporu DM'ine gönderildi!` });
-            else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
-        }
-        else if (commandName === 'guvenlik-rapor') {
-            const now = Date.now();
-            const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-            let content = `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║           MELEZYA GÜVENLİK - 7 GÜNLÜK RAPOR                  ║\n`;
-            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
-            content += `Rapor Tarihi: ${new Date().toLocaleString('tr-TR')}\n`;
-            content += `Dönem: ${new Date(weekAgo).toLocaleString('tr-TR')} - ${new Date(now).toLocaleString('tr-TR')}\n\n`;
-            const newMembers = guild.members.cache.filter(m => m.joinedTimestamp > weekAgo);
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `YENİ ÜYELER (${newMembers.size})\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            for (const [id, m] of newMembers) content += `${m.user.tag} (${id}) - ${m.joinedAt.toLocaleString('tr-TR')}\n`;
-            content += `\n`;
-            const gozaltiList = Object.values(gozaltinda).filter(g => new Date(g.tarih).getTime() > weekAgo);
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `GÖZALTINA ALINANLAR (${gozaltiList.length})\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            for (const g of gozaltiList) {
-                const u = await client.users.fetch(g.userId).catch(() => null);
-                content += `${u ? u.tag : 'Bilinmeyen'} (${g.userId})\n`;
-                content += `   Sebep: ${g.sebep}\n`;
-                content += `   Yetkili: ${g.yetkili}\n`;
-                content += `   Tarih: ${new Date(g.tarih).toLocaleString('tr-TR')}\n\n`;
-            }
-            const bans = await guild.bans.fetch();
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `TOPLAM BAN (${bans.size})\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            for (const [id, ban] of bans) content += `${ban.user.tag} (${id}) - Sebep: ${ban.reason || 'Belirtilmedi'}\n`;
-            content += `\n`;
-            const riskli = guild.members.cache.filter(m => {
-                if (m.user.bot) return false;
-                const perms = m.permissions.toArray();
-                const riskliPerm = perms.includes('Administrator') || perms.includes('ManageGuild') || perms.includes('ManageRoles') || perms.includes('BanMembers') || perms.includes('KickMembers');
-                const yeniHesap = (Date.now() - m.user.createdTimestamp) < 7 * 24 * 60 * 60 * 1000;
-                return riskliPerm || yeniHesap;
-            });
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `RİSKLİ ÜYELER (${riskli.size})\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            for (const [id, m] of riskli) {
-                content += `${m.user.tag} (${id})\n`;
-                content += `   Roller: ${m.roles.cache.map(r => r.name).join(', ') || 'Yok'}\n`;
-                content += `   Hesap Yaşı: ${Math.floor((Date.now() - m.user.createdTimestamp) / (24 * 60 * 60 * 1000))} gün\n\n`;
-            }
-            const attachment = createLogFile(content, `guvenlik-rapor-${Date.now()}.log`);
-            const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} 7 günlük güvenlik raporu:`, attachment);
-            if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Güvenlik raporu DM'ine gönderildi!` });
-            else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
-        }
-        else if (commandName === 'gecmissorgula') {
-            const target = interaction.options.getUser('kisi');
-            const targetMember = await guild.members.fetch(target.id).catch(() => null);
-            if (!targetMember) return interaction.editReply({ content: `${EMOJIS.kirmizi} Kullanıcı sunucuda bulunamadı!` });
-            const logData = loadUserLogFromDB(target.id);
-            const warnData = db.getWarns(target.id);
-            const totalRecords =
-                (logData.messages?.length || 0) + (logData.voiceSessions?.length || 0) + (logData.roles?.length || 0) +
-                (logData.nicknames?.length || 0) + (logData.warnings?.length || 0) + (logData.commands?.length || 0) +
-                (logData.joins?.length || 0) + (logData.leaves?.length || 0) + (logData.mentions?.length || 0) +
-                (logData.mentionedBy?.length || 0) + (logData.reactionsGiven?.length || 0) + (logData.reactionsReceived?.length || 0) +
-                (logData.links?.length || 0) + (logData.files?.length || 0) + (logData.emojis?.length || 0) +
-                (logData.statusHistory?.length || 0) + (logData.activityHistory?.length || 0) +
-                (logData.usernameHistory?.length || 0) + (logData.avatarHistory?.length || 0);
-            let content = '';
-            content += `╔══════════════════════════════════════════════════════════════╗\n`;
-            content += `║           MELEZYA GÜVENLİK - KULLANICI RAPORU                ║\n`;
-            content += `╚══════════════════════════════════════════════════════════════╝\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `👤 TEMEL BİLGİLER\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `• Kullanıcı Adı: ${target.username}\n`;
-            content += `• Görünen Ad: ${target.globalName || target.username}\n`;
-            content += `• Kullanıcı ID: ${target.id}\n`;
-            content += `• Bot mu?: ${target.bot ? 'Evet' : 'Hayır'}\n`;
-            content += `• Hesap Oluşturma: ${target.createdAt.toLocaleString('tr-TR')}\n`;
-            content += `• Sunucuya Katılım: ${targetMember.joinedAt?.toLocaleString('tr-TR') || 'Bilinmiyor'}\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `📊 GENEL İSTATİSTİKLER\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `• Toplam Mesaj: ${logData.messageCount || 0}\n`;
-            content += `• Toplam Kelime: ${logData.wordCount || 0}\n`;
-            content += `• Toplam Karakter: ${logData.characterCount || 0}\n`;
-            content += `• Ses Süresi: ${logData.voiceMinutes || 0} dakika\n`;
-            content += `• Uyarı Sayısı: ${warnData.length}\n`;
-            content += `• Toplam Log Kaydı: ${totalRecords}\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `💬 SON 100 MESAJ\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += (logData.messages || []).slice(0, 100).map((m, i) => `${i+1}. [${new Date(m.timestamp).toLocaleString('tr-TR')}] #${m.channel}: ${m.content || '(boş)'}`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `🔗 PAYLAŞILAN LİNKLER (Son 30)\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += (logData.links || []).slice(0, 30).map((l, i) => `${i+1}. [${new Date(l.timestamp).toLocaleString('tr-TR')}] #${l.channel}: ${l.url}`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `📎 PAYLAŞILAN DOSYALAR (Son 30)\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += (logData.files || []).slice(0, 30).map((f, i) => `${i+1}. [${new Date(f.timestamp).toLocaleString('tr-TR')}] #${f.channel}: ${f.name} (${(f.size/1024).toFixed(2)} KB)`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `😀 EN ÇOK KULLANILAN EMOJİLER\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            const emojiCounts = {};
-            (logData.emojis || []).forEach(e => { emojiCounts[e.emoji] = (emojiCounts[e.emoji] || 0) + 1; });
-            content += Object.entries(emojiCounts).sort((a,b) => b[1] - a[1]).slice(0, 20).map(([emoji, count], i) => `${i+1}. ${emoji}: ${count} kez`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `👥 ETİKETLEMELER\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `Kimi Etiketledi (Son 30):\n`;
-            content += (logData.mentions || []).slice(0, 30).map((m, i) => `${i+1}. [${new Date(m.timestamp).toLocaleString('tr-TR')}] @${m.username} (#${m.channel})`).join('\n') || '• Kayıt yok';
-            content += `\n\nKim Onu Etiketledi (Son 30):\n`;
-            content += (logData.mentionedBy || []).slice(0, 30).map((m, i) => `${i+1}. [${new Date(m.timestamp).toLocaleString('tr-TR')}] @${m.username} (#${m.channel})`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `😊 TEPKİLER\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `Verdiği (Son 30):\n`;
-            content += (logData.reactionsGiven || []).slice(0, 30).map((r, i) => `${i+1}. [${new Date(r.timestamp).toLocaleString('tr-TR')}] ${r.emoji} → @${r.messageAuthor}`).join('\n') || '• Kayıt yok';
-            content += `\n\nAldığı (Son 30):\n`;
-            content += (logData.reactionsReceived || []).slice(0, 30).map((r, i) => `${i+1}. [${new Date(r.timestamp).toLocaleString('tr-TR')}] ${r.emoji} ← @${r.from}`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `🎭 ROL DEĞİŞİKLİKLERİ\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += (logData.roles || []).slice(0, 30).map((r, i) => `${i+1}. [${new Date(r.timestamp).toLocaleString('tr-TR')}] ${r.type}: ${r.roles?.join(', ')}`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `✏️ NICK DEĞİŞİKLİKLERİ\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += (logData.nicknames || []).map((n, i) => `${i+1}. [${new Date(n.timestamp).toLocaleString('tr-TR')}] ${n.old || '(yok)'} → ${n.new || '(yok)'}`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `📛 KULLANICI ADI DEĞİŞİKLİKLERİ\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += (logData.usernameHistory || []).map((u, i) => `${i+1}. [${new Date(u.timestamp).toLocaleString('tr-TR')}] ${u.old} → ${u.new}`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `🟢 DURUM GEÇMİŞİ (Son 50)\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += (logData.statusHistory || []).slice(0, 50).map((s, i) => `${i+1}. [${new Date(s.timestamp).toLocaleString('tr-TR')}] ${s.old} → ${s.new}`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `🎮 AKTİVİTE GEÇMİŞİ (Son 50)\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += (logData.activityHistory || []).slice(0, 50).map((a, i) => `${i+1}. [${new Date(a.timestamp).toLocaleString('tr-TR')}] ${a.old || '(yok)'} → ${a.new || '(yok)'}`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `💻 KULLANILAN KOMUTLAR (Son 100)\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += (logData.commands || []).slice(0, 100).map((c, i) => `${i+1}. [${new Date(c.timestamp).toLocaleString('tr-TR')}] /${c.command} ${c.args || ''}`).join('\n') || '• Kayıt yok';
-            content += `\n\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            content += `RAPOR SONU - ${new Date().toLocaleString('tr-TR')}\n`;
-            content += `MELEZYA Bot ${EMOJIS.trbayrak}\n`;
-            content += `═══════════════════════════════════════════════════════════════\n`;
-            const buffer = Buffer.from(content, 'utf-8');
-            const attachment = new AttachmentBuilder(buffer, { name: `${target.username}-gecmis.log` });
-            const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} **${target.username}** kullanıcısının geçmişi (${totalRecords} kayıt):`, attachment);
-            if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Geçmiş raporu DM'ine gönderildi! (${totalRecords} kayıt)` });
-            else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi! DM'in kapalı olabilir.` });
-        }
-    } catch (e) {
-        console.error('Komut hatası:', e);
-        await interaction.editReply({ content: `${EMOJIS.kirmizi} Bir hata oluştu: ${e.message}` });
-    }
-});
-
-process.on('unhandledRejection', e => console.error('❌ Hata:', e));
-
-client.login(token2);
+    });
+};
