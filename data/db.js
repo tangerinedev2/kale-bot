@@ -16,19 +16,16 @@ let db = null;
 function getDB() {
     if (db) return db;
 
-    // Klasör var mı kontrol et
     if (!fs.existsSync(__dirname)) {
         fs.mkdirSync(__dirname, { recursive: true });
     }
 
     db = new DatabaseSync(DB_PATH);
 
-    // WAL modu (performans + kilitlenme önleme)
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA foreign_keys = ON');
     db.exec('PRAGMA synchronous = NORMAL');
 
-    // Schema'yı yükle (yoksa oluştur)
     try {
         const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
         db.exec(schema);
@@ -45,7 +42,6 @@ function getDB() {
 // YARDIMCI FONKSİYONLAR
 // ============================================================
 
-// Ayarları yükle (tümü)
 function loadSettings() {
     const database = getDB();
     const rows = database.prepare('SELECT key, value FROM settings').all();
@@ -56,7 +52,6 @@ function loadSettings() {
     return settings;
 }
 
-// Bir ayarı güncelle
 function setSetting(key, value) {
     const database = getDB();
     database.prepare(`
@@ -66,21 +61,18 @@ function setSetting(key, value) {
     `).run(key, String(value), String(value));
 }
 
-// Apo sayacı al
 function getApoCount() {
     const database = getDB();
     const row = database.prepare('SELECT count FROM apo_sayac WHERE id = 1').get();
     return row ? row.count : 0;
 }
 
-// Apo sayacı arttır
 function incrementApoCount() {
     const database = getDB();
     database.prepare('UPDATE apo_sayac SET count = count + 1, updatedAt = CURRENT_TIMESTAMP WHERE id = 1').run();
     return getApoCount();
 }
 
-// Kullanıcı kaydı oluştur (yoksa)
 function ensureUser(userId, username, displayName, isBot = false) {
     const database = getDB();
     database.prepare(`
@@ -93,13 +85,11 @@ function ensureUser(userId, username, displayName, isBot = false) {
     `).run(userId, username || '', displayName || '', isBot ? 1 : 0, Date.now(), Date.now());
 }
 
-// Kullanıcı bilgisi al
 function getUser(userId) {
     const database = getDB();
     return database.prepare('SELECT * FROM users WHERE userId = ?').get(userId);
 }
 
-// Kullanıcının mesaj sayısını arttır
 function incrementUserMessages(userId, wordCount = 0, characterCount = 0) {
     const database = getDB();
     database.prepare(`
@@ -113,7 +103,6 @@ function incrementUserMessages(userId, wordCount = 0, characterCount = 0) {
     `).run(wordCount, characterCount, Date.now(), userId);
 }
 
-// Kullanıcının ses süresini arttır
 function incrementUserVoice(userId, minutes) {
     const database = getDB();
     database.prepare(`
@@ -124,7 +113,6 @@ function incrementUserVoice(userId, minutes) {
     `).run(minutes, userId);
 }
 
-// Uyarı ekle
 function addWarn(userId, reason, byUser, byUserId) {
     const database = getDB();
     const result = database.prepare(`
@@ -134,20 +122,17 @@ function addWarn(userId, reason, byUser, byUserId) {
     return result.lastInsertRowid;
 }
 
-// Kullanıcının uyarılarını al
 function getWarns(userId) {
     const database = getDB();
     return database.prepare('SELECT * FROM warns WHERE userId = ? ORDER BY date DESC').all(userId);
 }
 
-// Uyarı sayısı
 function getWarnCount(userId) {
     const database = getDB();
     const row = database.prepare('SELECT COUNT(*) as count FROM warns WHERE userId = ?').get(userId);
     return row ? row.count : 0;
 }
 
-// Gözaltına al
 function addCustody(userId, reason, byUser, byUserId) {
     const database = getDB();
     database.prepare(`
@@ -161,26 +146,22 @@ function addCustody(userId, reason, byUser, byUserId) {
     `).run(userId, reason, byUser, byUserId);
 }
 
-// Gözaltından çıkar
 function removeCustody(userId) {
     const database = getDB();
     database.prepare('DELETE FROM custody WHERE userId = ?').run(userId);
 }
 
-// Gözaltındakileri listele
 function getCustodyList() {
     const database = getDB();
     return database.prepare('SELECT * FROM custody ORDER BY date DESC').all();
 }
 
-// Gözaltında mı?
 function isInCustody(userId) {
     const database = getDB();
     const row = database.prepare('SELECT userId FROM custody WHERE userId = ?').get(userId);
     return !!row;
 }
 
-// Moderasyon logu ekle
 function addModeration(userId, type, reason, duration, byUser, byUserId) {
     const database = getDB();
     database.prepare(`
@@ -189,7 +170,6 @@ function addModeration(userId, type, reason, duration, byUser, byUserId) {
     `).run(userId, type, reason || '', duration || 0, byUser || '', byUserId || '');
 }
 
-// Komut logu ekle
 function addCommandLog(userId, command, args, channelId) {
     const database = getDB();
     database.prepare(`
@@ -198,7 +178,6 @@ function addCommandLog(userId, command, args, channelId) {
     `).run(userId, command, args || '', channelId || '');
 }
 
-// Mesaj logu ekle
 function addMessageLog(userId, messageId, channelId, channelName, content, attachments, mentions) {
     const database = getDB();
     database.prepare(`
@@ -216,7 +195,6 @@ function addMessageLog(userId, messageId, channelId, channelName, content, attac
     );
 }
 
-// Ses oturumu ekle
 function addVoiceSession(userId, channelId, channelName, type, duration, startTime, endTime) {
     const database = getDB();
     database.prepare(`
@@ -225,7 +203,6 @@ function addVoiceSession(userId, channelId, channelName, type, duration, startTi
     `).run(userId, channelId, channelName, type, duration || 0, startTime || '', endTime || '');
 }
 
-// Ses periyodu ekle
 function addVoicePeriod(userId, channelId, channelName, startTime, endTime, duration, formatted) {
     const database = getDB();
     database.prepare(`
@@ -234,7 +211,6 @@ function addVoicePeriod(userId, channelId, channelName, startTime, endTime, dura
     `).run(userId, channelId, channelName, startTime, endTime, duration, formatted || '');
 }
 
-// Günlük aktiflik güncelle
 function updateActivity(userId, date, messages, voiceMinutes) {
     const database = getDB();
     database.prepare(`
@@ -247,7 +223,6 @@ function updateActivity(userId, date, messages, voiceMinutes) {
     `).run(userId, date, messages || 0, voiceMinutes || 0, Date.now(), Date.now(), messages || 0, voiceMinutes || 0, Date.now());
 }
 
-// Katılma/ayrılma kaydı
 function addJoinLeave(userId, type, tag, memberCount) {
     const database = getDB();
     database.prepare(`
@@ -256,7 +231,6 @@ function addJoinLeave(userId, type, tag, memberCount) {
     `).run(userId, type, tag || '', memberCount || 0);
 }
 
-// Nick geçmişi ekle
 function addNicknameHistory(userId, oldNick, newNick) {
     const database = getDB();
     database.prepare(`
@@ -265,7 +239,6 @@ function addNicknameHistory(userId, oldNick, newNick) {
     `).run(userId, oldNick || '', newNick || '');
 }
 
-// Kullanıcı adı geçmişi ekle
 function addUsernameHistory(userId, oldUsername, newUsername) {
     const database = getDB();
     database.prepare(`
@@ -274,7 +247,6 @@ function addUsernameHistory(userId, oldUsername, newUsername) {
     `).run(userId, oldUsername || '', newUsername || '');
 }
 
-// Avatar geçmişi ekle
 function addAvatarHistory(userId, oldAvatar, newAvatar) {
     const database = getDB();
     database.prepare(`
@@ -283,7 +255,6 @@ function addAvatarHistory(userId, oldAvatar, newAvatar) {
     `).run(userId, oldAvatar || '', newAvatar || '');
 }
 
-// Durum geçmişi ekle
 function addStatusHistory(userId, oldStatus, newStatus) {
     const database = getDB();
     database.prepare(`
@@ -292,7 +263,6 @@ function addStatusHistory(userId, oldStatus, newStatus) {
     `).run(userId, oldStatus || '', newStatus || '');
 }
 
-// Aktivite geçmişi ekle
 function addActivityHistory(userId, oldActivity, newActivity) {
     const database = getDB();
     database.prepare(`
@@ -301,7 +271,6 @@ function addActivityHistory(userId, oldActivity, newActivity) {
     `).run(userId, oldActivity || '', newActivity || '');
 }
 
-// Mention ekle
 function addMention(userId, mentionedUserId, channelId, channelName) {
     const database = getDB();
     database.prepare(`
@@ -310,7 +279,6 @@ function addMention(userId, mentionedUserId, channelId, channelName) {
     `).run(userId, mentionedUserId, channelId, channelName);
 }
 
-// Mentioned_by ekle
 function addMentionedBy(userId, byUserId, byUsername, channelId, channelName) {
     const database = getDB();
     database.prepare(`
@@ -319,7 +287,6 @@ function addMentionedBy(userId, byUserId, byUsername, channelId, channelName) {
     `).run(userId, byUserId, byUsername || '', channelId, channelName);
 }
 
-// Tepki ekle (verilen)
 function addReactionGiven(userId, emoji, messageAuthor, channelId, channelName) {
     const database = getDB();
     database.prepare(`
@@ -328,7 +295,6 @@ function addReactionGiven(userId, emoji, messageAuthor, channelId, channelName) 
     `).run(userId, emoji, messageAuthor || '', channelId, channelName);
 }
 
-// Tepki ekle (alınan)
 function addReactionReceived(userId, emoji, fromUserId, fromUsername, channelId, channelName) {
     const database = getDB();
     database.prepare(`
@@ -337,7 +303,6 @@ function addReactionReceived(userId, emoji, fromUserId, fromUsername, channelId,
     `).run(userId, emoji, fromUserId, fromUsername || '', channelId, channelName);
 }
 
-// Link ekle
 function addLink(userId, url, channelId, channelName) {
     const database = getDB();
     database.prepare(`
@@ -346,7 +311,6 @@ function addLink(userId, url, channelId, channelName) {
     `).run(userId, url, channelId, channelName);
 }
 
-// Dosya ekle
 function addFile(userId, name, url, size, channelId, channelName) {
     const database = getDB();
     database.prepare(`
@@ -355,7 +319,6 @@ function addFile(userId, name, url, size, channelId, channelName) {
     `).run(userId, name || '', url || '', size || 0, channelId, channelName);
 }
 
-// Emoji ekle
 function addEmojiUsed(userId, emoji, channelId, channelName) {
     const database = getDB();
     database.prepare(`
@@ -364,7 +327,6 @@ function addEmojiUsed(userId, emoji, channelId, channelName) {
     `).run(userId, emoji, channelId, channelName);
 }
 
-// Rol geçmişi ekle
 function addRoleHistory(userId, roleId, roleName, type, byUser, byUserId) {
     const database = getDB();
     database.prepare(`
@@ -373,7 +335,6 @@ function addRoleHistory(userId, roleId, roleName, type, byUser, byUserId) {
     `).run(userId, roleId, roleName || '', type, byUser || '', byUserId || '');
 }
 
-// Davet kaydet
 function saveInvite(code, inviterId, inviterTag, channelId, uses, maxUses, maxAge, temporary, createdAt) {
     const database = getDB();
     database.prepare(`
@@ -385,7 +346,6 @@ function saveInvite(code, inviterId, inviterTag, channelId, uses, maxUses, maxAg
     `).run(code, inviterId, inviterTag || '', channelId, uses || 0, maxUses || 0, maxAge || 0, temporary ? 1 : 0, createdAt || Date.now());
 }
 
-// Davet kullanımı kaydet
 function addInviteUse(inviterId, invitedId, invitedTag, invitedIsBot, code) {
     const database = getDB();
     database.prepare(`
@@ -394,7 +354,6 @@ function addInviteUse(inviterId, invitedId, invitedTag, invitedIsBot, code) {
     `).run(inviterId, invitedId, invitedTag || '', invitedIsBot ? 1 : 0, code || '');
 }
 
-// En çok davet edenler
 function getTopInviters(limit = 10) {
     const database = getDB();
     return database.prepare(`
@@ -407,7 +366,6 @@ function getTopInviters(limit = 10) {
     `).all(limit);
 }
 
-// Sunucu istatistiği kaydet
 function addServerStats(memberCount, onlineCount, boostCount, channelCount, roleCount) {
     const database = getDB();
     database.prepare(`
@@ -416,7 +374,6 @@ function addServerStats(memberCount, onlineCount, boostCount, channelCount, role
     `).run(memberCount, onlineCount, boostCount, channelCount, roleCount);
 }
 
-// Hata logu ekle
 function addErrorLog(command, error, stack, userId, guildId) {
     const database = getDB();
     database.prepare(`
@@ -429,7 +386,6 @@ function addErrorLog(command, error, stack, userId, guildId) {
 // İSTATİSTİK FONKSİYONLARI
 // ============================================================
 
-// En çok mesaj atanlar
 function getTopMessageUsers(limit = 10) {
     const database = getDB();
     return database.prepare(`
@@ -440,7 +396,6 @@ function getTopMessageUsers(limit = 10) {
     `).all(limit);
 }
 
-// En çok ses süresi olanlar
 function getTopVoiceUsers(limit = 10) {
     const database = getDB();
     return database.prepare(`
@@ -451,14 +406,12 @@ function getTopVoiceUsers(limit = 10) {
     `).all(limit);
 }
 
-// Toplam kullanıcı sayısı
 function getTotalUsers() {
     const database = getDB();
     const row = database.prepare('SELECT COUNT(*) as count FROM users WHERE isBot = 0').get();
     return row ? row.count : 0;
 }
 
-// Toplam mesaj sayısı
 function getTotalMessages() {
     const database = getDB();
     const row = database.prepare('SELECT COUNT(*) as count FROM messages').get();
