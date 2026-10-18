@@ -1,4 +1,4 @@
-const PREFIX = 'm!';
+const PREFIX = 'mz!';
 const { EmbedBuilder, PermissionsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
