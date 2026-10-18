@@ -1,6 +1,6 @@
 -- ============================================================
--- KALE BOT - SQLite Şeması
--- 30 kritik tablo
+-- MELEZYA BOT - SQLite Şeması
+-- 34 tablo (30 eski + 4 yeni)
 -- Node v22.23.3 / node:sqlite
 -- ============================================================
 
@@ -361,7 +361,7 @@ CREATE TABLE IF NOT EXISTS apo_sayac (
 );
 
 -- ============================================================
--- 28. AUTOMOD_ACTIONS - Otomatik moderasyon kayıtları
+-- 28. AUTOMOD_ACTIONS - Otomatik moderasyon kayıtları (eski)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS automod_actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -400,7 +400,47 @@ CREATE TABLE IF NOT EXISTS error_logs (
 );
 
 -- ============================================================
--- İNDEKSLER (performans için)
+-- 31. AUTOMOD_LOGS - Otomatik moderasyon logları (YENİ)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automod_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId TEXT NOT NULL,
+    channelId TEXT,
+    ruleType TEXT NOT NULL,
+    content TEXT,
+    action TEXT,
+    date TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 32. AUTOMOD_KELIMELER - Dinamik küfür listesi (YENİ)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automod_kelimeler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kelime TEXT UNIQUE NOT NULL,
+    eklendigiTarih TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 33. AUTOMOD_IZINLI_KANALLAR - Link filtresinden muaf kanallar (YENİ)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automod_izinli_kanallar (
+    channelId TEXT PRIMARY KEY,
+    eklenmeTarihi TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 34. RAID_EVENTS - Raid olayları (YENİ)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS raid_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    katilimciSayisi INTEGER,
+    tarih TEXT DEFAULT CURRENT_TIMESTAMP,
+    aksiyon TEXT
+);
+
+-- ============================================================
+-- İNDEKSLER
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_warns_userId ON warns(userId);
 CREATE INDEX IF NOT EXISTS idx_moderation_userId ON moderation(userId);
@@ -435,15 +475,16 @@ CREATE INDEX IF NOT EXISTS idx_invite_uses_inviterId ON invite_uses(inviterId);
 CREATE INDEX IF NOT EXISTS idx_invite_uses_invitedId ON invite_uses(invitedId);
 CREATE INDEX IF NOT EXISTS idx_automod_actions_userId ON automod_actions(userId);
 CREATE INDEX IF NOT EXISTS idx_error_logs_date ON error_logs(date);
+CREATE INDEX IF NOT EXISTS idx_automod_logs_userId ON automod_logs(userId);
+CREATE INDEX IF NOT EXISTS idx_automod_logs_ruleType ON automod_logs(ruleType);
+CREATE INDEX IF NOT EXISTS idx_automod_logs_date ON automod_logs(date);
 
 -- ============================================================
 -- BAŞLANGIÇ VERİLERİ
 -- ============================================================
 
--- Apo sayaç (tek satır)
 INSERT OR IGNORE INTO apo_sayac (id, count) VALUES (1, 0);
 
--- Varsayılan ayarlar
 INSERT OR IGNORE INTO settings (key, value) VALUES ('log_mesaj_sil', 'true');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('log_mesaj_duzenle', 'true');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('log_uye_katil', 'true');
@@ -465,41 +506,15 @@ INSERT OR IGNORE INTO settings (key, value) VALUES ('log_rol_sil', 'true');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('log_otomatik_mod', 'true');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('log_timeout', 'true');
 
--- AUTOMOD_LOGS
-CREATE TABLE IF NOT EXISTS automod_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId TEXT NOT NULL,
-    channelId TEXT,
-    ruleType TEXT NOT NULL,
-    content TEXT,
-    action TEXT,
-    date TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
--- AUTOMOD_KELIMELER
-CREATE TABLE IF NOT EXISTS automod_kelimeler (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kelime TEXT UNIQUE NOT NULL,
-    eklendigiTarih TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
--- AUTOMOD_IZINLI_KANALLAR
-CREATE TABLE IF NOT EXISTS automod_izinli_kanallar (
-    channelId TEXT PRIMARY KEY,
-    eklenmeTarihi TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
--- RAID_EVENTS
-CREATE TABLE IF NOT EXISTS raid_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    katilimciSayisi INTEGER,
-    tarih TEXT DEFAULT CURRENT_TIMESTAMP,
-    aksiyon TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_automod_logs_userId ON automod_logs(userId);
-CREATE INDEX IF NOT EXISTS idx_automod_logs_ruleType ON automod_logs(ruleType);
-CREATE INDEX IF NOT EXISTS idx_automod_logs_date ON automod_logs(date);
+-- Otomatik moderasyon varsayılan ayarları
+INSERT OR IGNORE INTO settings (key, value) VALUES ('automod_enabled', 'true');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('automod_kufur', 'true');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('automod_spam', 'true');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('automod_link', 'true');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('automod_caps', 'true');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('automod_mention', 'true');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('automod_emoji', 'true');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('automod_flood', 'true');
 
 -- ============================================================
 -- SON
