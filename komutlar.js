@@ -1,4 +1,4 @@
-const PREFIX = 'u!';
+const PREFIX = 'm!';
 const { EmbedBuilder, PermissionsBitField, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -55,7 +55,7 @@ const EMOJI = {
 };
 
 const BAŞLIK = `${EMOJI.kale} `;
-const FOOTER = `UKRAYNAA ${EMOJI.trbayrak}`;
+const FOOTER = `MELEZYA ${EMOJI.trbayrak}`;
 
 async function safeFetch(url, options = {}, timeout = 10000) {
     const controller = new AbortController();
@@ -253,7 +253,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 testSonuclari.push(`${EMOJI.tik} SQLite Kullanıcı: ${db.getTotalUsers()}`);
                 testSonuclari.push(`${EMOJI.tik} SQLite Mesaj: ${db.getTotalMessages()}`);
                 testSonuclari.push(`${EMOJI.tik} SQLite Apo Sayaç: ${db.getApoCount()}`);
-                const rapor = `UKRAYNAA BOT DEBUG RAPORU\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n${testSonuclari.join('\n')}`;
+                const rapor = `MELEZYA BOT DEBUG RAPORU\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n${testSonuclari.join('\n')}`;
                 const buffer = Buffer.from(rapor, 'utf-8');
                 const attachment = new AttachmentBuilder(buffer, { name: `debug-${Date.now()}.log` });
                 try {
@@ -385,26 +385,18 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 await message.reply(`${EMOJI.tik} **Kanal açıldı!**`);
                 return;
             }
-                        // ==================== RULET (GELİŞMİŞ) ====================
+                        // ==================== RULET ====================
             if (command === 'rusruleti' || command === 'rulet') {
-                const hedef = message.mentions.users.first() || message.author;
                 const kullanici = message.author;
-                
                 if (!ruletStats.has(kullanici.id)) ruletStats.set(kullanici.id, { oynanan: 0, kazanilan: 0, kaybedilen: 0 });
                 const stats = ruletStats.get(kullanici.id);
                 stats.oynanan++;
-                
                 const kursunSlot = Math.floor(Math.random() * 6) + 1;
                 const cekilenSlot = Math.floor(Math.random() * 6) + 1;
                 const oldu = kursunSlot === cekilenSlot;
-                
-                if (oldu) stats.kaybedilen++;
-                else stats.kazanilan++;
-                
+                if (oldu) stats.kaybedilen++; else stats.kazanilan++;
                 const sans = ((stats.kazanilan / stats.oynanan) * 100).toFixed(1);
                 const renk = oldu ? 0xFF0000 : 0x00FF00;
-                const baslik = oldu ? `${EMOJI.fire} ÖLDÜN!` : `${EMOJI.tik} KURTULDUN!`;
-                
                 const embed = new EmbedBuilder()
                     .setColor(renk)
                     .setTitle(`${EMOJI.silah} RUS RULETİ ${EMOJI.silah}`)
@@ -417,7 +409,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     )
                     .setFooter({ text: `${FOOTER} • Şansına güven!` })
                     .setTimestamp();
-                
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -427,7 +418,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const target = message.mentions.users.first();
                 if (!target) return message.reply(`${EMOJI.carpi} Birini etiketle!`);
                 if (target.id === userId) return message.reply(`${EMOJI.carpi} Kendinle ship olamazsın!`);
-                
                 const percentage = Math.floor(Math.random() * 100) + 1;
                 let yorum = '';
                 if (percentage >= 90) yorum = `${EMOJI.fire} **MÜKEMMEL UYUM!** Evlenin artık! 💍`;
@@ -436,9 +426,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 else if (percentage >= 30) yorum = `${EMOJI.sari} **Zor ama imkansız değil!** 🤔`;
                 else if (percentage >= 10) yorum = `${EMOJI.carpi} **Pek uyumlu değil!** 😅`;
                 else yorum = `${EMOJI.kirmizi} **Hiç olmaz!** Arkadaş kalın bari! 💔`;
-                
                 const bar = '█'.repeat(Math.floor(percentage / 10)) + '░'.repeat(10 - Math.floor(percentage / 10));
-                
                 const embed = new EmbedBuilder()
                     .setColor(percentage >= 50 ? 0xFF6B9D : 0x2B2D31)
                     .setTitle(`${EMOJI.ship} AŞK ÖLÇER ${EMOJI.ship}`)
@@ -446,7 +434,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     .setThumbnail(target.displayAvatarURL({ dynamic: true, size: 256 }))
                     .setFooter({ text: FOOTER })
                     .setTimestamp();
-                
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -457,20 +444,17 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 if (!target) return message.reply(`${EMOJI.carpi} Birini etiketle!`);
                 if (target.id === userId) return message.reply(`${EMOJI.carpi} Kendinle düello yapamazsın!`);
                 if (target.bot) return message.reply(`${EMOJI.carpi} Botlarla düello yapamazsın!`);
-                
                 const embed = new EmbedBuilder()
                     .setColor(0xE30A17)
                     .setTitle(`${EMOJI.silah} DÜELLO ${EMOJI.silah}`)
                     .setDescription(`⚔️ **${message.author.username}** ve **${target.username}** arasında düello başladı!\n\n**${target.username}**, düelloyu kabul ediyor musun?`)
                     .setFooter({ text: `${FOOTER} • 30 saniye içinde cevap ver` })
                     .setTimestamp();
-                
                 const row = new ActionRowBuilder()
                     .addComponents(
                         new ButtonBuilder().setCustomId(`duello_kabul_${userId}_${target.id}`).setLabel('⚔️ Kabul Et').setStyle(ButtonStyle.Success),
                         new ButtonBuilder().setCustomId(`duello_red_${userId}_${target.id}`).setLabel('❌ Reddet').setStyle(ButtonStyle.Danger)
                     );
-                
                 await message.reply({ embeds: [embed], components: [row] });
                 return;
             }
@@ -585,8 +569,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         collector.on('collect', async (interaction) => {
                             const secilenIndex = parseInt(interaction.customId.split('_')[2]);
                             const dogruMu = secilenIndex === dogruIndex;
-                            if (dogruMu) dogruSayisi++;
-                            else yanlisSayisi++;
+                            if (dogruMu) dogruSayisi++; else yanlisSayisi++;
                             const disabledRow = new ActionRowBuilder().addComponents(
                                 new ButtonBuilder().setCustomId('mil_c_0').setLabel(`A) ${secenekler[0]}`).setStyle(secilenIndex === 0 ? (dogruMu ? ButtonStyle.Success : ButtonStyle.Danger) : (dogruIndex === 0 ? ButtonStyle.Success : ButtonStyle.Secondary)).setDisabled(true),
                                 new ButtonBuilder().setCustomId('mil_c_1').setLabel(`B) ${secenekler[1]}`).setStyle(secilenIndex === 1 ? (dogruMu ? ButtonStyle.Success : ButtonStyle.Danger) : (dogruIndex === 1 ? ButtonStyle.Success : ButtonStyle.Secondary)).setDisabled(true)
@@ -654,7 +637,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 return;
             }
 
-            if (command === 'ataturkbilgi' || command === 'bilgi') {
+            if (command === 'ataturkbilgi') {
                 const bilgi = ATATURK_BILGI[Math.floor(Math.random() * ATATURK_BILGI.length)];
                 const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.trbayrak} ATATÜRK HAKKINDA`).setDescription(bilgi).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
@@ -692,7 +675,8 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 await message.reply({ embeds: [embed] });
                 return;
             }
-                        // ==================== BİLGİ ====================
+
+            // ==================== BİLGİ ====================
             if (command === 'ping') {
                 const ping = client.ws.ping;
                 const pingEmoji = ping < 100 ? EMOJI.iyi_ping : EMOJI.kotu_ping;
@@ -761,7 +745,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             }
 
             if (command === 'bot' || command === 'info') {
-                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.bot_logo} UKRAYNAA BOT`).setDescription(`**Geliştirici:** <@${ADMIN_ID}>\n**Sunucu:** ${message.guild.name}\n**Hizmet:** \`${message.guild.memberCount}\`\n**Ping:** \`${client.ws.ping}ms\`\n**Çalışma:** \`${Math.floor(process.uptime()/3600)} saat\`\n**Veritabanı:** \`SQLite\`\n**Komut:** \`80+\``).setFooter({ text: FOOTER });
+                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.bot_logo} MELEZYA BOT`).setDescription(`**Geliştirici:** <@${ADMIN_ID}>\n**Sunucu:** ${message.guild.name}\n**Hizmet:** \`${message.guild.memberCount}\`\n**Ping:** \`${client.ws.ping}ms\`\n**Çalışma:** \`${Math.floor(process.uptime()/3600)} saat\`\n**Veritabanı:** \`SQLite\`\n**Komut:** \`80+\``).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -945,17 +929,17 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const idData = await idResponse.json();
                     if (!idData.data || idData.data.length === 0) return message.reply(`${EMOJI.carpi} Kullanıcı bulunamadı.`);
                     const user = idData.data[0];
-                    const userId = user.id;
-                    const userResponse = await safeFetch(`https://users.roblox.com/v1/users/${userId}`);
+                    const userIdR = user.id;
+                    const userResponse = await safeFetch(`https://users.roblox.com/v1/users/${userIdR}`);
                     const userData = await userResponse.json();
-                    const avatarResponse = await safeFetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=420x420&format=Png&isCircular=false`);
+                    const avatarResponse = await safeFetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userIdR}&size=420x420&format=Png&isCircular=false`);
                     const avatarData = await avatarResponse.json();
-                    const avatarUrl = avatarData.data?.[0]?.imageUrl || `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=420&height=420&format=png`;
+                    const avatarUrl = avatarData.data?.[0]?.imageUrl || `https://www.roblox.com/headshot-thumbnail/image?userId=${userIdR}&width=420&height=420&format=png`;
                     const embed = new EmbedBuilder().setColor(0x00B2FF).setTitle(`${EMOJI.roblox} ROBLOX - ${userData.name}`).setThumbnail(avatarUrl).addFields(
-                        { name: 'ID', value: `\`${userId}\``, inline: true },
+                        { name: 'ID', value: `\`${userIdR}\``, inline: true },
                         { name: 'Kullanıcı', value: userData.name, inline: true },
                         { name: 'Görünen Ad', value: userData.displayName || userData.name, inline: true },
-                        { name: 'Profil', value: `[Tıkla](https://www.roblox.com/users/${userId}/profile)`, inline: true },
+                        { name: 'Profil', value: `[Tıkla](https://www.roblox.com/users/${userIdR}/profile)`, inline: true },
                         { name: 'Hesap Oluşturma', value: userData.created ? new Date(userData.created).toLocaleDateString('tr-TR') : 'Bilinmiyor', inline: true }
                     ).setFooter({ text: `Roblox ${EMOJI.trbayrak}` });
                     await message.reply({ embeds: [embed] });
@@ -971,7 +955,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const data = await response.json();
                     if (!data || !data.id) return message.reply(`${EMOJI.carpi} Oyuncu bulunamadı.`);
                     const uuid = data.id;
-                    const embed = new EmbedBuilder().setColor(0x00B2FF).setTitle(`${EMOJI.minecraft} MINECRAFT - ${data.name}`).setDescription(`**Oyuncu:** ${data.name}\n**UUID:** \`${uuid}\``).setThumbnail(`https://api.fadehost.com/api/minecraft/skin/body/256/${uuid}.png`).setImage(`https://crafatar.com/renders/body/${uuid}?overlay=true`).setFooter({ text: `Minecraft ${EMOJI.trbayrak}` });
+                    const embed = new EmbedBuilder().setColor(0x00B2FF).setTitle(`${EMOJI.minecraft} MINECRAFT - ${data.name}`).setDescription(`**Oyuncu:** ${data.name}\n**UUID:** \`${uuid}\``).setThumbnail(`https://crafatar.com/avatars/${uuid}?size=256&overlay`).setImage(`https://crafatar.com/renders/body/${uuid}?overlay=true`).setFooter({ text: `Minecraft ${EMOJI.trbayrak}` });
                     await message.reply({ embeds: [embed] });
                 } catch (e) { message.reply(`${EMOJI.carpi} Minecraft API hatası!`); }
                 return;
@@ -1034,26 +1018,21 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 return;
             }
 
-            // ==================== TARAMA ====================
+            // ==================== TARAMA (DÜZELTİLDİ) ====================
             if (command === 'tarama' || command === 'tara') {
                 let url = args[0];
                 if (!url) return message.reply(`${EMOJI.carpi} Bir URL belirt! Örnek: \`${PREFIX}tarama google.com\``);
                 if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url;
-                
-                await message.reply(`${EMOJI.yukleniyor} **Site taranıyor...** \`${url}\``);
-                
+                const yukleniyorMsg = await message.channel.send(`${EMOJI.yukleniyor} **Site taranıyor...** \`${url}\``);
                 try {
                     const startTime = Date.now();
-                    const response = await safeFetch(url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 (UKRAYNAA Bot Scanner)' } }, 15000);
+                    const response = await safeFetch(url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 (MELEZYA Bot Scanner)' } }, 15000);
                     const sure = Date.now() - startTime;
                     const html = await response.text();
-                    
                     const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
                     const title = titleMatch ? titleMatch[1].trim().slice(0, 100) : 'Yok';
-                    
                     const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
                     const metaDesc = descMatch ? descMatch[1].trim().slice(0, 200) : 'Yok';
-                    
                     const teknolojiler = [];
                     if (html.includes('wp-content') || html.includes('wordpress')) teknolojiler.push('WordPress');
                     if (html.includes('react') || html.includes('__REACT')) teknolojiler.push('React');
@@ -1063,7 +1042,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     if (html.includes('bootstrap')) teknolojiler.push('Bootstrap');
                     if (html.includes('jquery')) teknolojiler.push('jQuery');
                     if (response.headers.get('server')?.includes('cloudflare')) teknolojiler.push('Cloudflare');
-                    
                     const guvenlik = {
                         hsts: response.headers.get('strict-transport-security') ? '✅' : '❌',
                         csp: response.headers.get('content-security-policy') ? '✅' : '❌',
@@ -1072,7 +1050,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         xxss: response.headers.get('x-xss-protection') ? '✅' : '❌',
                         referrer: response.headers.get('referrer-policy') ? '✅' : '❌'
                     };
-                    
                     let robotsInfo = 'Yok';
                     try {
                         const robotsRes = await safeFetch(new URL('/robots.txt', url).href, {}, 5000);
@@ -1081,7 +1058,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                             robotsInfo = `Var (${robotsTxt.split('\n').length} satır)`;
                         }
                     } catch (e) {}
-                    
                     let sitemapInfo = 'Yok';
                     try {
                         const sitemapRes = await safeFetch(new URL('/sitemap.xml', url).href, {}, 5000);
@@ -1091,7 +1067,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                             sitemapInfo = `Var (${urlCount} URL)`;
                         }
                     } catch (e) {}
-                    
                     let apiInfo = 'Bulunamadı';
                     const apiPaths = ['/openapi.json', '/swagger.json', '/api-docs', '/swagger-ui.html'];
                     for (const path of apiPaths) {
@@ -1106,7 +1081,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                             }
                         } catch (e) {}
                     }
-                    
                     const embed = new EmbedBuilder()
                         .setColor(0x4FC3F7)
                         .setTitle(`🔍 SİTE TARAMA: ${new URL(url).hostname}`)
@@ -1124,11 +1098,10 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         )
                         .setFooter({ text: `${FOOTER} • Sadece herkese açık bilgiler` })
                         .setTimestamp();
-                    
-                    await message.reply({ embeds: [embed] });
+                    await yukleniyorMsg.edit({ content: null, embeds: [embed] });
                 } catch (e) {
                     console.error('Tarama hatası:', e);
-                    message.reply(`${EMOJI.carpi} Site taranamadı: \`${e.message}\``);
+                    await yukleniyorMsg.edit({ content: `${EMOJI.carpi} Site taranamadı: \`${e.message}\`` });
                 }
                 return;
             }
@@ -1138,12 +1111,10 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const altKomut = args[0]?.toLowerCase();
                 const tip = args[1]?.toLowerCase();
                 const metin = args.slice(3).join(' ');
-                
                 if (!altKomut) {
                     const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.encode} CIPHER KOMUTLARI`).setDescription(`**Kullanım:**\n\`${PREFIX}cipher encode base64 <metin>\`\n\`${PREFIX}cipher decode base64 <metin>\`\n\`${PREFIX}cipher hash <metin>\`\n\`${PREFIX}cipher timestamp\``).setFooter({ text: FOOTER });
                     return message.reply({ embeds: [embed] });
                 }
-                
                 if (altKomut === 'encode') {
                     if (!tip || !metin) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}cipher encode base64 <metin>\``);
                     let sonuc = '';
@@ -1152,14 +1123,12 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     else if (tip === 'url') sonuc = encodeURIComponent(metin);
                     else if (tip === 'binary') sonuc = metin.split('').map(c => c.charCodeAt(0).toString(2).padStart(8, '0')).join(' ');
                     else return message.reply(`${EMOJI.carpi} Desteklenen tipler: \`base64\`, \`hex\`, \`url\`, \`binary\``);
-                    
                     const embed = new EmbedBuilder().setColor(0x00FF00).setTitle(`${EMOJI.encode} ENCODE - ${tip.toUpperCase()}`).addFields(
                         { name: '📥 Girdi', value: `\`\`\`${metin.slice(0, 500)}\`\`\`` },
                         { name: '📤 Sonuç', value: `\`\`\`${sonuc.slice(0, 1000)}\`\`\`` }
                     ).setFooter({ text: FOOTER });
                     return message.reply({ embeds: [embed] });
                 }
-                
                 if (altKomut === 'decode') {
                     if (!tip || !metin) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}cipher decode base64 <metin>\``);
                     try {
@@ -1169,7 +1138,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         else if (tip === 'url') sonuc = decodeURIComponent(metin);
                         else if (tip === 'binary') sonuc = metin.split(' ').map(b => String.fromCharCode(parseInt(b, 2))).join('');
                         else return message.reply(`${EMOJI.carpi} Desteklenen tipler: \`base64\`, \`hex\`, \`url\`, \`binary\``);
-                        
                         const embed = new EmbedBuilder().setColor(0x00FF00).setTitle(`${EMOJI.decode} DECODE - ${tip.toUpperCase()}`).addFields(
                             { name: '📥 Girdi', value: `\`\`\`${metin.slice(0, 500)}\`\`\`` },
                             { name: '📤 Sonuç', value: `\`\`\`${sonuc.slice(0, 1000)}\`\`\`` }
@@ -1179,7 +1147,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         return message.reply(`${EMOJI.carpi} Decode başarısız: \`${e.message}\``);
                     }
                 }
-                
                 if (altKomut === 'hash') {
                     const hashMetin = args.slice(2).join(' ');
                     if (!hashMetin) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}cipher hash <metin>\``);
@@ -1195,20 +1162,62 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     ).setFooter({ text: FOOTER });
                     return message.reply({ embeds: [embed] });
                 }
-                
                 if (altKomut === 'timestamp' || altKomut === 'ts') {
                     const now = Math.floor(Date.now() / 1000);
                     const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.saat} CIPHER - TIMESTAMP`).setDescription(`**Saniye:** \`${now}\`\n**Milisaniye:** \`${Date.now()}\`\n**Discord:** \`<t:${now}:f>\` → <t:${now}:f>\n**Discord (R):** \`<t:${now}:R>\` → <t:${now}:R>`).setFooter({ text: FOOTER });
                     return message.reply({ embeds: [embed] });
                 }
-                
                 return message.reply(`${EMOJI.carpi} Bilinmeyen komut. \`${PREFIX}cipher\` yaz.`);
             }
-                        // ==================== YARDIM ====================
+
+            // ==================== YARDIM ====================
             if (command === 'yardim' || command === 'yardım' || command === 'help') {
+                if (args[0]) {
+                    const arananKomut = args[0].toLowerCase();
+                    const komutBilgileri = {
+                        'apoyabas': { aciklama: 'Apo sayacını arttırır.', kullanim: `${PREFIX}apoyabas` },
+                        'milyoner': { aciklama: '13 soruluk bilgi yarışması başlatır.', kullanim: `${PREFIX}milyoner` },
+                        'rusruleti': { aciklama: 'Rus ruleti oynar (istatistikli).', kullanim: `${PREFIX}rusruleti` },
+                        'ship': { aciklama: 'İki kişi arasında aşk ölçer.', kullanim: `${PREFIX}ship @kullanıcı` },
+                        '1vs1': { aciklama: 'Düello başlatır.', kullanim: `${PREFIX}1vs1 @kullanıcı` },
+                        'temizle': { aciklama: 'Belirtilen sayıda mesaj siler.', kullanim: `${PREFIX}temizle <1-100>` },
+                        'kick': { aciklama: 'Kullanıcıyı sunucudan atar.', kullanim: `${PREFIX}kick @kullanıcı [sebep]` },
+                        'ban': { aciklama: 'Kullanıcıyı sunucudan yasaklar.', kullanim: `${PREFIX}ban @kullanıcı [sebep]` },
+                        'uyar': { aciklama: 'Kullanıcıya uyarı verir.', kullanim: `${PREFIX}uyar @kullanıcı [sebep]` },
+                        'hava': { aciklama: 'Belirtilen şehrin hava durumunu gösterir.', kullanim: `${PREFIX}hava [şehir]` },
+                        'döviz': { aciklama: 'Güncel döviz kurlarını gösterir.', kullanim: `${PREFIX}döviz` },
+                        'kripto': { aciklama: 'Güncel kripto para fiyatlarını gösterir.', kullanim: `${PREFIX}kripto` },
+                        'wiki': { aciklama: 'Wikipedia\'dan bilgi getirir.', kullanim: `${PREFIX}wiki <konu>` },
+                        'github': { aciklama: 'GitHub kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}github <kullanıcı>` },
+                        'roblox': { aciklama: 'Roblox kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}roblox <kullanıcı>` },
+                        'minecraft': { aciklama: 'Minecraft oyuncu bilgilerini gösterir.', kullanim: `${PREFIX}minecraft <oyuncu>` },
+                        'borsa': { aciklama: 'Hisse senedi fiyatını gösterir.', kullanim: `${PREFIX}borsa <sembol>` },
+                        'deprem': { aciklama: 'Son depremleri listeler.', kullanim: `${PREFIX}deprem` },
+                        'ülke': { aciklama: 'Ülke bilgilerini gösterir.', kullanim: `${PREFIX}ülke <ülke>` },
+                        'nasa': { aciklama: 'NASA APOD fotoğrafını gösterir.', kullanim: `${PREFIX}nasa` },
+                        'banner': { aciklama: 'Kullanıcının banner\'ını gösterir.', kullanim: `${PREFIX}banner [@kullanıcı]` },
+                        'cipher': { aciklama: 'Encode/decode/hash/timestamp yapar.', kullanim: `${PREFIX}cipher encode/decode/hash/timestamp` },
+                        'tarama': { aciklama: 'Bir siteyi güvenlik açısından tarar.', kullanim: `${PREFIX}tarama <url>` },
+                        'profil': { aciklama: 'Kullanıcı profilini gösterir.', kullanim: `${PREFIX}profil [@kullanıcı]` },
+                        'atam': { aciklama: 'Rastgele Atatürk fotoğrafı ve sözü gönderir.', kullanim: `${PREFIX}atam` }
+                    };
+                    const bilgi = komutBilgileri[arananKomut];
+                    if (!bilgi) return message.reply(`${EMOJI.carpi} **\`${arananKomut}\`** komutu hakkında bilgi bulunamadı!`);
+                    const embed = new EmbedBuilder()
+                        .setColor(0x4FC3F7)
+                        .setTitle(`📖 \`${PREFIX}${arananKomut}\` KOMUTU`)
+                        .addFields(
+                            { name: '📝 Açıklama', value: bilgi.aciklama, inline: false },
+                            { name: '💡 Kullanım', value: `\`${bilgi.kullanim}\``, inline: false }
+                        )
+                        .setFooter({ text: `${FOOTER} • ${PREFIX}yardim <komut>` })
+                        .setTimestamp();
+                    await message.reply({ embeds: [embed] });
+                    return;
+                }
                 const embed = new EmbedBuilder()
                     .setColor(0xE30A17)
-                    .setTitle(`${EMOJI.kale} UKRAYNAA BOT KOMUTLARI ${EMOJI.trbayrak}`)
+                    .setTitle(`${EMOJI.kale} MELEZYA BOT KOMUTLARI ${EMOJI.trbayrak}`)
                     .setDescription(`Merhaba **${message.author.username}**! 👋\nToplam **80+ komut** ile hizmetindeyim.\n\n📖 **Detaylı yardım için:** \`${PREFIX}yardim <komut>\``)
                     .addFields(
                         { name: `${EMOJI.kalkan} MODERASYON (ADMIN)`, value: '`temizle` `kick` `ban` `unban` `uyar` `uyarılar` `sustur` `susturma-kaldır` `slowmode` `kanal-kilit` `kanal-aç`', inline: false },
@@ -1222,51 +1231,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         { name: `${EMOJI.ayarlar} YÖNETİM (ADMIN)`, value: '`yedek` `ayar aç/kapa/durum` `debug`', inline: false }
                     )
                     .setFooter({ text: `${FOOTER} • Toplam 80+ komut • İyi eğlenceler!` })
-                    .setTimestamp();
-                await message.reply({ embeds: [embed] });
-                return;
-            }
-
-            // ==================== DETAYLI YARDIM ====================
-            if ((command === 'yardim' || command === 'yardım') && args[0]) {
-                const arananKomut = args[0].toLowerCase();
-                const komutBilgileri = {
-                    'apoyabas': { aciklama: 'Apo sayacını arttırır.', kullanim: `${PREFIX}apoyabas` },
-                    'milyoner': { aciklama: '13 soruluk bilgi yarışması başlatır.', kullanim: `${PREFIX}milyoner` },
-                    'rusruleti': { aciklama: 'Rus ruleti oynar (istatistikli).', kullanim: `${PREFIX}rusruleti` },
-                    'ship': { aciklama: 'İki kişi arasında aşk ölçer.', kullanim: `${PREFIX}ship @kullanıcı` },
-                    '1vs1': { aciklama: 'Düello başlatır.', kullanim: `${PREFIX}1vs1 @kullanıcı` },
-                    'temizle': { aciklama: 'Belirtilen sayıda mesaj siler.', kullanim: `${PREFIX}temizle <1-100>` },
-                    'kick': { aciklama: 'Kullanıcıyı sunucudan atar.', kullanim: `${PREFIX}kick @kullanıcı [sebep]` },
-                    'ban': { aciklama: 'Kullanıcıyı sunucudan yasaklar.', kullanim: `${PREFIX}ban @kullanıcı [sebep]` },
-                    'uyar': { aciklama: 'Kullanıcıya uyarı verir.', kullanim: `${PREFIX}uyar @kullanıcı [sebep]` },
-                    'hava': { aciklama: 'Belirtilen şehrin hava durumunu gösterir.', kullanim: `${PREFIX}hava [şehir]` },
-                    'döviz': { aciklama: 'Güncel döviz kurlarını gösterir.', kullanim: `${PREFIX}döviz` },
-                    'kripto': { aciklama: 'Güncel kripto para fiyatlarını gösterir.', kullanim: `${PREFIX}kripto` },
-                    'wiki': { aciklama: 'Wikipedia\'dan bilgi getirir.', kullanim: `${PREFIX}wiki <konu>` },
-                    'github': { aciklama: 'GitHub kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}github <kullanıcı>` },
-                    'roblox': { aciklama: 'Roblox kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}roblox <kullanıcı>` },
-                    'minecraft': { aciklama: 'Minecraft oyuncu bilgilerini gösterir.', kullanim: `${PREFIX}minecraft <oyuncu>` },
-                    'borsa': { aciklama: 'Hisse senedi fiyatını gösterir.', kullanim: `${PREFIX}borsa <sembol>` },
-                    'deprem': { aciklama: 'Son depremleri listeler.', kullanim: `${PREFIX}deprem` },
-                    'ülke': { aciklama: 'Ülke bilgilerini gösterir.', kullanim: `${PREFIX}ülke <ülke>` },
-                    'nasa': { aciklama: 'NASA APOD fotoğrafını gösterir.', kullanim: `${PREFIX}nasa` },
-                    'banner': { aciklama: 'Kullanıcının banner\'ını gösterir.', kullanim: `${PREFIX}banner [@kullanıcı]` },
-                    'cipher': { aciklama: 'Encode/decode/hash/timestamp yapar.', kullanim: `${PREFIX}cipher encode/decode/hash/timestamp` },
-                    'tarama': { aciklama: 'Bir siteyi güvenlik açısından tarar.', kullanim: `${PREFIX}tarama <url>` },
-                    'profil': { aciklama: 'Kullanıcı profilini gösterir.', kullanim: `${PREFIX}profil [@kullanıcı]` },
-                    'atam': { aciklama: 'Rastgele Atatürk fotoğrafı ve sözü gönderir.', kullanim: `${PREFIX}atam` }
-                };
-                const bilgi = komutBilgileri[arananKomut];
-                if (!bilgi) return message.reply(`${EMOJI.carpi} **\`${arananKomut}\`** komutu hakkında bilgi bulunamadı!`);
-                const embed = new EmbedBuilder()
-                    .setColor(0x4FC3F7)
-                    .setTitle(`📖 \`${PREFIX}${arananKomut}\` KOMUTU`)
-                    .addFields(
-                        { name: '📝 Açıklama', value: bilgi.aciklama, inline: false },
-                        { name: '💡 Kullanım', value: `\`${bilgi.kullanim}\``, inline: false }
-                    )
-                    .setFooter({ text: `${FOOTER} • ${PREFIX}yardim <komut>` })
                     .setTimestamp();
                 await message.reply({ embeds: [embed] });
                 return;
@@ -1287,36 +1251,30 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
     client.on('interactionCreate', async (interaction) => {
         if (!interaction.isButton()) return;
         try {
-            // Düello butonları
             if (interaction.customId.startsWith('duello_')) {
                 const parts = interaction.customId.split('_');
                 const tip = parts[1];
                 const davetEden = parts[2];
                 const davetEdilen = parts[3];
-                
                 if (interaction.user.id !== davetEdilen) {
                     return interaction.reply({ content: `${EMOJI.carpi} Bu düello sana ait değil!`, flags: EPHEMERAL });
                 }
-                
                 if (tip === 'red') {
                     return interaction.update({
                         embeds: [new EmbedBuilder().setColor(0x2B2D31).setTitle(`${EMOJI.carpi} DÜELLO REDDEDİLDİ`).setDescription(`**${interaction.user.username}** düelloyu reddetti.`).setFooter({ text: FOOTER })],
                         components: []
                     });
                 }
-                
                 if (tip === 'kabul') {
                     const kazanan = Math.random() < 0.5 ? davetEden : davetEdilen;
                     const kazananUser = await client.users.fetch(kazanan).catch(() => null);
                     const kaybedenUser = await client.users.fetch(kazanan === davetEden ? davetEdilen : davetEden).catch(() => null);
-                    
                     const embed = new EmbedBuilder()
                         .setColor(0xFFD700)
                         .setTitle(`${EMOJI.kazanan} DÜELLO SONUCU ${EMOJI.kazanan}`)
                         .setDescription(`⚔️ **${kazananUser?.username || 'Bilinmiyor'}** kazandı!\n\n💀 **${kaybedenUser?.username || 'Bilinmiyor'}** kaybetti!`)
                         .setFooter({ text: FOOTER })
                         .setTimestamp();
-                    
                     return interaction.update({ embeds: [embed], components: [] });
                 }
             }
