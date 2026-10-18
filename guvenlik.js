@@ -25,7 +25,7 @@ const EMOJIS = {
     dogrulanmadi: '<:dogrulanmadi:1547954536034082896>',
     dogrulandi: '<:dogrulandi:1547954534201032774>',
     trbayrak: '<a:trbayrak:1547936258859475014>',
-    kale: '<:KALE:1547935181430718516>'
+    kale: '<:logo:1561439559861018655>'
 };
 
 // =========================== VERİ ===========================
