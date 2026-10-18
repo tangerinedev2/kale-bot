@@ -16,7 +16,7 @@ const ffmpegPath = ffmpegStatic;
 
 require('dotenv').config();
 const token = process.env.TOKEN;
-const ACIL_DURUM_SIFRE = process.env.ACIL_DURUM_SIFRE || 'UKRAYNAA2024!';
+const ACIL_DURUM_SIFRE = process.env.ACIL_DURUM_SIFRE || 'MELEZYA2024!';
 
 const GUILD_ID = '1543963769120497805';
 const SABIT_SES_KANALI_ID = '1546154071113728101';
@@ -35,7 +35,7 @@ const MEEM_KLASORU = path.join(__dirname, 'meem');
 const BAYRAK = '<a:trbayrak:1546565825304072365>';
 const YUKLENIYOR = '<a:yukleniyor:1547711418407583765>';
 const LOADING = YUKLENIYOR;
-const SILENT_FLAG = 4096; // SUPPRESS_NOTIFICATIONS
+const SILENT_FLAG = 4096;
 
 const ADMIN_ONLY_COMMANDS = [
     'temizle', 'sil', 'kick', 'ban', 'unban',
@@ -75,37 +75,25 @@ const EMOJIS = {
     kulak: '👂'
 };
 
-// =========================== AYARLAR (SQLite) ===========================
 let ayarlar = db.loadSettings();
-
-function loadAyarlar() {
-    ayarlar = db.loadSettings();
-}
-
+function loadAyarlar() { ayarlar = db.loadSettings(); }
 function saveAyarlar() {
-    for (const [key, value] of Object.entries(ayarlar)) {
-        db.setSetting(key, value);
-    }
+    for (const [key, value] of Object.entries(ayarlar)) db.setSetting(key, value);
 }
 
-// =========================== KULLANICI LOG (SQLite) ===========================
 function loadUserLog(userId) {
     const user = db.getUser(userId);
     const warns = db.getWarns(userId);
     return {
-        userId: userId,
-        messageCount: user?.messageCount || 0,
-        voiceMinutes: user?.voiceMinutes || 0,
-        wordCount: user?.wordCount || 0,
-        characterCount: user?.characterCount || 0,
+        userId, messageCount: user?.messageCount || 0, voiceMinutes: user?.voiceMinutes || 0,
+        wordCount: user?.wordCount || 0, characterCount: user?.characterCount || 0,
         lastMessage: user?.lastMessage || null,
         warnings: warns.map(w => ({ reason: w.reason, by: w.byUser, date: w.date })),
-        messages: [], commands: [], voiceSessions: [], voicePeriods: [],
-        nicknames: [], usernameHistory: [], avatarHistory: [], statusHistory: [],
-        activityHistory: [], mentions: [], mentionedBy: [], reactionsGiven: [],
-        reactionsReceived: [], links: [], files: [], emojis: [], moderation: [],
-        joins: [], leaves: [], activeDays: {}, dailyStats: {},
-        hourlyActivity: {}, channelActivity: {}
+        messages: [], commands: [], voiceSessions: [], voicePeriods: [], nicknames: [],
+        usernameHistory: [], avatarHistory: [], statusHistory: [], activityHistory: [],
+        mentions: [], mentionedBy: [], reactionsGiven: [], reactionsReceived: [],
+        links: [], files: [], emojis: [], moderation: [], joins: [], leaves: [],
+        activeDays: {}, dailyStats: {}, hourlyActivity: {}, channelActivity: {}
     };
 }
 
@@ -144,7 +132,6 @@ function appendUserLog(userId, category, entry) {
 }
 
 const activeSessions = new Map();
-
 function trackActivity(userId, type = 'message') {
     const today = new Date().toISOString().split('T')[0];
     try { db.updateActivity(userId, today, type === 'message' ? 1 : 0, type === 'voice' ? 1 : 0); } catch (e) {}
@@ -161,7 +148,6 @@ const ATATURK_SOZLER = [
     'Fikri hür, vicdanı hür, irfanı hür nesiller istiyorum.',
     'Bütün ümidim gençliktedir.'
 ];
-
 const ATATURK_BILGI = [
     'Mustafa Kemal Atatürk, 1881 yılında Selanik\'te doğdu.',
     'Atatürk, Türkiye Cumhuriyeti\'nin kurucusu ve ilk cumhurbaşkanıdır.',
@@ -173,49 +159,35 @@ const ATATURK_BILGI = [
 function loadImages() {
     try {
         if (fs.existsSync(RESIM_KLASORU)) {
-            ATATURK_IMAGE = fs.readdirSync(RESIM_KLASORU)
-                .filter(f => ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(path.extname(f).toLowerCase()));
-        } else {
-            fs.mkdirSync(RESIM_KLASORU, { recursive: true });
-        }
+            ATATURK_IMAGE = fs.readdirSync(RESIM_KLASORU).filter(f => ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(path.extname(f).toLowerCase()));
+        } else { fs.mkdirSync(RESIM_KLASORU, { recursive: true }); }
     } catch (e) {}
 }
 
 function getMeemFiles() {
     try {
-        if (!fs.existsSync(MEEM_KLASORU)) {
-            fs.mkdirSync(MEEM_KLASORU, { recursive: true });
-            return [];
-        }
+        if (!fs.existsSync(MEEM_KLASORU)) { fs.mkdirSync(MEEM_KLASORU, { recursive: true }); return []; }
         return fs.readdirSync(MEEM_KLASORU).filter(f => f.endsWith('.mp3')).map(f => path.join(MEEM_KLASORU, f));
     } catch (e) { return []; }
 }
 
 let JUMPSCARE_FILES = getMeemFiles();
 const JUMPSCARE_COOLDOWN = { maxPerDay: 5, chance: 0.01, lastReset: Date.now(), count: 0, enabled: true };
-
 let audioSettings = { volume: 100, bass: 0 };
 
-function getUserWarns(userId) {
-    return db.getWarns(userId).map(w => ({ reason: w.reason, by: w.byUser, date: w.date }));
-}
-
+function getUserWarns(userId) { return db.getWarns(userId).map(w => ({ reason: w.reason, by: w.byUser, date: w.date })); }
 function saveWarns() {}
-
 let warns = {};
 function loadWarns() { warns = {}; }
-
 function getUserAktiflik(userId) {
     const user = db.getUser(userId);
     if (!user) return { messages: 0, voiceMinutes: 0, lastMessage: Date.now() };
     return { messages: user.messageCount || 0, voiceMinutes: user.voiceMinutes || 0, lastMessage: user.lastMessage || Date.now() };
 }
-
 function saveAktiflik() {}
 let aktiflik = {};
 function loadAktiflik() { aktiflik = {}; }
 
-// =========================== LOG (SILENT) ===========================
 async function logToChannel(guildId, embed, logType = null) {
     if (logType && !ayarlar[`log_${logType}`]) return;
     try {
@@ -224,7 +196,7 @@ async function logToChannel(guildId, embed, logType = null) {
         const channel = guild.channels.cache.get(LOG_CHANNEL_ID);
         if (!channel) return;
         await channel.send({ embeds: [embed], flags: SILENT_FLAG });
-    } catch (e) { 
+    } catch (e) {
         try {
             const guild = client.guilds.cache.get(guildId);
             const channel = guild?.channels?.cache?.get(LOG_CHANNEL_ID);
@@ -235,11 +207,8 @@ async function logToChannel(guildId, embed, logType = null) {
 
 function createLogEmbed(title, description, color = 0x2B2D31, fields = [], user = null) {
     const embed = new EmbedBuilder()
-        .setColor(color)
-        .setTitle(title)
-        .setDescription(description || '')
-        .setTimestamp()
-        .setFooter({ text: `UKRAYNAA Log Sistemi ${BAYRAK}` });
+        .setColor(color).setTitle(title).setDescription(description || '')
+        .setTimestamp().setFooter({ text: `MELEZYA Log Sistemi ${BAYRAK}` });
     if (user) {
         embed.setThumbnail(user.displayAvatarURL({ dynamic: true, size: 128 }));
         embed.setAuthor({ name: user.tag, iconURL: user.displayAvatarURL({ dynamic: true, size: 64 }) });
@@ -255,7 +224,6 @@ function createLogEmbed(title, description, color = 0x2B2D31, fields = [], user 
     return embed;
 }
 
-// =========================== ACİL DURUM ===========================
 async function acilDurum(guild) {
     try {
         const channels = guild.channels.cache;
@@ -279,18 +247,15 @@ async function acilDurum(guild) {
         const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
         if (logChannel) {
             const embed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle('ACİL DURUM AKTİF!')
+                .setColor(0xFF0000).setTitle('ACİL DURUM AKTİF!')
                 .setDescription(`Sunucu kilitlendi, tüm rollerin yetkileri sıfırlandı.\n<@${ADMIN_ID}> adlı kullanıcıya **Acil Durum Yöneticisi** rolü verildi.`)
-                .setTimestamp()
-                .setFooter({ text: `UKRAYNAA Acil Durum ${BAYRAK}` });
+                .setTimestamp().setFooter({ text: `MELEZYA Acil Durum ${BAYRAK}` });
             await logChannel.send({ embeds: [embed], flags: SILENT_FLAG });
         }
         return true;
     } catch (e) { console.error('Acil durum hatası:', e); return false; }
 }
 
-// =========================== EXPRESS ===========================
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
@@ -302,29 +267,24 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 app.get('/api/jumpscare/stats', (req, res) => {
     res.json({ success: true, count: JUMPSCARE_COOLDOWN.count, maxPerDay: JUMPSCARE_COOLDOWN.maxPerDay, enabled: JUMPSCARE_COOLDOWN.enabled, chance: JUMPSCARE_COOLDOWN.chance, toplamDosya: JUMPSCARE_FILES.length, logs: [] });
 });
-
 app.post('/api/jumpscare/settings', (req, res) => {
     const { enabled } = req.body;
     if (typeof enabled === 'boolean') { JUMPSCARE_COOLDOWN.enabled = enabled; res.json({ success: true, enabled }); }
     else res.json({ success: false, error: 'enabled boolean olmalı' });
 });
-
 app.get('/api/audio/settings', (req, res) => {
     res.json({ success: true, settings: { volume: audioSettings.volume, bass: audioSettings.bass } });
 });
-
 app.post('/api/audio/settings', (req, res) => {
     const { volume, bass } = req.body;
     if (typeof volume === 'number') audioSettings.volume = Math.max(0, Math.min(200, volume));
     if (typeof bass === 'number') audioSettings.bass = Math.max(-10, Math.min(10, bass));
     res.json({ success: true, settings: { volume: audioSettings.volume, bass: audioSettings.bass } });
 });
-
 app.get('/api/sounds', (req, res) => {
     try { res.json({ success: true, sounds: getMeemFiles().map(f => ({ name: path.basename(f, '.mp3') })) }); }
     catch (e) { res.json({ success: false, error: e.message, sounds: [] }); }
 });
-
 app.post('/api/playsound/:soundName', async (req, res) => {
     try {
         const soundName = req.params.soundName;
@@ -363,42 +323,28 @@ io.on('connection', (socket) => {
 
 server.listen(3000, () => console.log(`🌐 Web: http://localhost:3000`));
 
-// =========================== BOT ===========================
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildModeration,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildPresences,
-        GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.GuildEmojisAndStickers,
-        GatewayIntentBits.GuildIntegrations,
-        GatewayIntentBits.GuildWebhooks
+        GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildPresences, GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildEmojisAndStickers,
+        GatewayIntentBits.GuildIntegrations, GatewayIntentBits.GuildWebhooks
     ],
     partials: [Partials.Channel, Partials.GuildMember, Partials.Message, Partials.Reaction, Partials.User]
 });
 
-// =========================== READY ===========================
 client.once('ready', async () => {
-    loadImages();
-    loadWarns();
-    loadAktiflik();
-    loadAyarlar();
+    loadImages(); loadWarns(); loadAktiflik(); loadAyarlar();
     JUMPSCARE_FILES = getMeemFiles();
-
     console.log(`✅ ${client.user.tag} hazır! ${BAYRAK}`);
     console.log(`🎵 ${JUMPSCARE_FILES.length} meem dosyası`);
     console.log(`💣 Güvenlik modülü hazır!`);
     console.log(`📂 Kullanıcı log sistemi aktif!`);
     console.log(`🔐 Acil durum sistemi aktif!`);
     console.log(`📊 SQLite veritabanı: data/kale.db`);
-
     try {
         const guild = await client.guilds.fetch(GUILD_ID);
-        console.log(`✅ Bot "U K R A Y N A A #YÜKSELİŞ" sunucusunda!`);
+        console.log(`✅ Bot "MELEZYA" sunucusunda!`);
         const voiceChannel = guild.channels.cache.get(SABIT_SES_KANALI_ID);
         if (voiceChannel && voiceChannel.type === 2) {
             const existingConnection = getVoiceConnection(GUILD_ID);
@@ -409,7 +355,6 @@ client.once('ready', async () => {
             }
         }
     } catch (e) {}
-
     try {
         await client.application.commands.set([
             { name: 'yardim', description: 'Tüm komutları gösterir.' },
@@ -417,14 +362,11 @@ client.once('ready', async () => {
         ]);
         console.log('✅ Slash komutlar kaydedildi!');
     } catch (e) { console.error('❌ Slash komut kaydı başarısız:', e); }
-
     await updateBotStatus();
     setInterval(updateBotStatus, 30000);
-
     require('./komutlar.js')(client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG_CHANNEL_ID, KURAL_KANAL_ID, ACIL_DURUM_SIFRE, acilDurum, ayarlar, saveAyarlar, appendUserLog, loadUserLog, saveUserLog, getUserAktiflik, saveAktiflik, getUserWarns, saveWarns, warns, ATATURK_IMAGE, ATATURK_SOZLER, ATATURK_BILGI, RESIM_KLASORU, VIDEO_PATH, ISTIKLAL_PATH, ffmpegPath, audioSettings, playVideoWithAudio, playIstiklal, playCustomSound, playJumpscare, returnToFixedChannel, getMeemFiles, JUMPSCARE_COOLDOWN, JUMPSCARE_FILES);
 });
 
-// =========================== DURUM ===========================
 let statusIndex = 0;
 async function updateBotStatus() {
     try {
@@ -433,9 +375,9 @@ async function updateBotStatus() {
         const aktif = guild.members.cache.filter(m => m.presence?.status === 'online' || m.presence?.status === 'idle' || m.presence?.status === 'dnd').size;
         const statuses = [
             { name: `${memberCount} Kişiye Hizmet Ediyor!`, type: 3 },
-            { name: 'UKRAYNAA\'da her şey senin için!', type: 3 },
-            { name: 'Herşey UKRAYNAA için.', type: 3 },
-            { name: 'UKRAYNAA Biz bir aileyiz.', type: 3 },
+            { name: 'MELEZYA\'da her şey senin için!', type: 3 },
+            { name: 'Herşey MELEZYA için.', type: 3 },
+            { name: 'MELEZYA Biz bir aileyiz.', type: 3 },
             { name: `${aktif} Kişi Aktif! ${EMOJIS.alev}`, type: 3 },
             { name: '🛡️ Güvenlik Aktif', type: 3 }
         ];
@@ -444,7 +386,6 @@ async function updateBotStatus() {
     } catch (e) {}
 }
 
-// =========================== ÜYE KATILDI ===========================
 client.on('guildMemberAdd', async (member) => {
     if (member.guild.id !== GUILD_ID) return;
     db.ensureUser(member.id, member.user.username, member.displayName, false);
@@ -453,11 +394,10 @@ client.on('guildMemberAdd', async (member) => {
     if (channel) {
         try { const role = member.guild.roles.cache.get(AUTO_ROLE_ID); if (role) await member.roles.add(role); } catch (e) {}
         const embed = new EmbedBuilder()
-            .setColor(0xE30A17)
-            .setTitle('HOŞ GELDİN!')
+            .setColor(0xE30A17).setTitle('HOŞ GELDİN!')
             .setDescription(`${EMOJIS.kale} **${member.user.globalName || member.user.username}** aramıza katıldı!\n${EMOJIS.bbknk} Sunucumuz **${member.guild.memberCount}** kişi oldu!\n${EMOJIS.tik} **Kuralları okumayı unutma!**\n${BAYRAK} *Ne mutlu Türk'üm diyene!*`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
-            .setFooter({ text: `UKRAYNAA Ailesi ${BAYRAK}`, iconURL: member.guild.iconURL() })
+            .setFooter({ text: `MELEZYA Ailesi ${BAYRAK}`, iconURL: member.guild.iconURL() })
             .setTimestamp();
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('kurallar').setLabel('📜 Kurallar').setStyle(ButtonStyle.Primary),
@@ -475,18 +415,16 @@ client.on('guildMemberAdd', async (member) => {
     ], member.user), 'uye_katil');
 });
 
-// =========================== ÜYE AYRILDI ===========================
 client.on('guildMemberRemove', async (member) => {
     if (member.guild.id !== GUILD_ID) return;
     db.addJoinLeave(member.id, 'leave', member.user.tag, member.guild.memberCount);
     const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
     if (channel) {
         const embed = new EmbedBuilder()
-            .setColor(0x2B2D31)
-            .setTitle('GÜLE GÜLE!')
+            .setColor(0x2B2D31).setTitle('GÜLE GÜLE!')
             .setDescription(`${EMOJIS.bbknk} **${member.user.globalName || member.user.username}** ayrıldı.\n${EMOJIS.carpi} *Umarız tekrar görüşürüz!*`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
-            .setFooter({ text: `UKRAYNAA Ailesi ${BAYRAK}`, iconURL: member.guild.iconURL() })
+            .setFooter({ text: `MELEZYA Ailesi ${BAYRAK}`, iconURL: member.guild.iconURL() })
             .setTimestamp();
         await channel.send({ embeds: [embed] });
     }
@@ -499,7 +437,6 @@ client.on('guildMemberRemove', async (member) => {
     ], member.user), 'uye_ayril');
 });
 
-// =========================== MESAJ SİLİNDİ ===========================
 client.on('messageDelete', async (message) => {
     if (!message.guild || message.guild.id !== GUILD_ID) return;
     if (message.author?.bot || message.partial) return;
@@ -513,7 +450,6 @@ client.on('messageDelete', async (message) => {
     ], message.author), 'mesaj_sil');
 });
 
-// =========================== MESAJ DÜZENLENDİ ===========================
 client.on('messageUpdate', async (oldM, newM) => {
     if (!oldM.guild || oldM.guild.id !== GUILD_ID) return;
     if (oldM.author?.bot || oldM.partial || newM.partial) return;
@@ -530,7 +466,6 @@ client.on('messageUpdate', async (oldM, newM) => {
     ], oldM.author), 'mesaj_duzenle');
 });
 
-// =========================== ROL DEĞİŞİKLİĞİ ===========================
 client.on('guildMemberUpdate', async (oldM, newM) => {
     if (oldM.guild.id !== GUILD_ID || oldM.user.bot) return;
     const oldRoles = oldM.roles.cache.map(r => r.id);
@@ -568,7 +503,6 @@ client.on('guildMemberUpdate', async (oldM, newM) => {
             { name: 'Yeni Nick', value: `\`${newM.nickname || 'Yok'}\``, inline: true }
         ], oldM.user), 'nick');
     }
-    // Timeout kontrolü
     if (!oldM.communicationDisabledUntil && newM.communicationDisabledUntil) {
         await logToChannel(GUILD_ID, createLogEmbed('ÜYE SUSTURULDU', `**${newM.user.tag}** susturuldu.`, 0xFF0000, [
             { name: 'Kullanıcı', value: `${newM.user} (\`${newM.id}\`)`, inline: true },
@@ -581,7 +515,6 @@ client.on('guildMemberUpdate', async (oldM, newM) => {
     }
 });
 
-// =========================== PRESENCE ===========================
 client.on('presenceUpdate', async (oldP, newP) => {
     if (!newP || newP.guild.id !== GUILD_ID || newP.user.bot) return;
     if (oldP?.status !== newP.status) {
@@ -604,7 +537,6 @@ client.on('presenceUpdate', async (oldP, newP) => {
     }
 });
 
-// =========================== USER UPDATE ===========================
 client.on('userUpdate', async (oldU, newU) => {
     if (newU.bot) return;
     if (oldU.displayAvatarURL() !== newU.displayAvatarURL()) {
@@ -625,7 +557,6 @@ client.on('userUpdate', async (oldU, newU) => {
     }
 });
 
-// =========================== TEPKİLER ===========================
 client.on('messageReactionAdd', async (reaction, user) => {
     if (user.bot || reaction.message.guild?.id !== GUILD_ID) return;
     if (reaction.partial) { try { await reaction.fetch(); } catch (e) { return; } }
@@ -640,7 +571,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
     ], user), 'tepki');
 });
 
-// =========================== SES ===========================
 const voiceJoinTimes = new Map();
 client.on('voiceStateUpdate', async (oldS, newS) => {
     if (oldS.guild.id !== GUILD_ID || oldS.member.user.bot || oldS.member.id === client.user.id) return;
@@ -686,7 +616,6 @@ client.on('voiceStateUpdate', async (oldS, newS) => {
     }
 });
 
-// =========================== SUNUCU GÜNCELLENDİ ===========================
 client.on('guildUpdate', async (oldG, newG) => {
     if (oldG.id !== GUILD_ID) return;
     const changes = [];
@@ -698,7 +627,6 @@ client.on('guildUpdate', async (oldG, newG) => {
     if (changes.length > 0) await logToChannel(GUILD_ID, createLogEmbed('SUNUCU GÜNCELLENDİ', `Sunucu ayarları güncellendi.`, 0x4FC3F7, [{ name: 'Değişiklikler', value: changes.join('\n') }], null), 'sunucu');
 });
 
-// =========================== EMOJI ===========================
 client.on('emojiCreate', async (emoji) => {
     if (emoji.guild.id !== GUILD_ID) return;
     await logToChannel(GUILD_ID, createLogEmbed('EMOJİ OLUŞTURULDU', `**${emoji.name}** emojisi oluşturuldu.`, 0x00FF00, [
@@ -725,7 +653,6 @@ client.on('emojiDelete', async (emoji) => {
     ], null), 'emoji');
 });
 
-// =========================== KANAL ===========================
 client.on('channelCreate', async (channel) => {
     if (channel.guild.id !== GUILD_ID) return;
     await logToChannel(GUILD_ID, createLogEmbed('KANAL OLUŞTURULDU', `**${channel.name}** kanalı oluşturuldu.`, 0x00FF00, [
@@ -755,7 +682,6 @@ client.on('channelDelete', async (channel) => {
     ], null), 'kanal');
 });
 
-// =========================== ROL ===========================
 client.on('roleCreate', async (role) => {
     if (role.guild.id !== GUILD_ID) return;
     await logToChannel(GUILD_ID, createLogEmbed('ROL OLUŞTURULDU', `**${role.name}** rolü oluşturuldu.`, 0x00FF00, [
@@ -785,7 +711,6 @@ client.on('roleDelete', async (role) => {
     ], null), 'rol_sil');
 });
 
-// =========================== SA KOMUTU ===========================
 client.on('messageCreate', async (message) => {
     if (message.author.bot || message.guild?.id !== GUILD_ID) return;
     const content = message.content.toLowerCase().trim();
@@ -793,13 +718,12 @@ client.on('messageCreate', async (message) => {
         const embed = new EmbedBuilder()
             .setColor(0xE30A17)
             .setDescription(`${EMOJIS.kale} **Aleyküm Selam, ${message.author.globalName || message.author.username}!**\n${EMOJIS.hosgeldin} *Hoş geldin!*\n${BAYRAK} **Ne mutlu Türk'üm diyene!**`)
-            .setFooter({ text: `UKRAYNAA ${BAYRAK}`, iconURL: message.guild.iconURL() })
+            .setFooter({ text: `MELEZYA ${BAYRAK}`, iconURL: message.guild.iconURL() })
             .setTimestamp();
         try { await message.channel.send({ embeds: [embed] }); } catch (e) {}
     }
 });
 
-// =========================== DETAYLI MESAJ LOG ===========================
 client.on('messageCreate', async (message) => {
     if (message.author.bot || message.guild?.id !== GUILD_ID) return;
     const userId = message.author.id;
@@ -816,7 +740,6 @@ client.on('messageCreate', async (message) => {
     trackActivity(userId, 'message');
 });
 
-// =========================== BUTONLAR ===========================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     if (interaction.guild.id !== GUILD_ID) return;
@@ -826,11 +749,10 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'duello_red') await interaction.reply({ content: `❌ **${interaction.user}** düelloyu reddetti.` });
 });
 
-// =========================== SLASH ===========================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     if (interaction.commandName === 'yardim') {
-        const embed = new EmbedBuilder().setColor(0xE30A17).setTitle('UKRAYNAA BOT').setDescription('Tüm komutlar `k!` ile başlar. `k!yardim` yazarak detayları görebilirsin.').setFooter({ text: `UKRAYNAA ${BAYRAK}` }).setTimestamp();
+        const embed = new EmbedBuilder().setColor(0xE30A17).setTitle('MELEZYA BOT').setDescription('Tüm komutlar `m!` ile başlar. `m!yardim` yazarak detayları görebilirsin.').setFooter({ text: `MELEZYA ${BAYRAK}` }).setTimestamp();
         await interaction.reply({ embeds: [embed] });
     }
     if (interaction.commandName === 'aktifgelistirici') {
@@ -838,12 +760,11 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// =========================== HATA ===========================
 process.on('unhandledRejection', e => {
     console.error('❌ Hata:', e);
     try { db.addErrorLog('unhandledRejection', e.message || String(e), e.stack || '', '', ''); } catch (err) {}
 });
-// =========================== SES FONKSİYONLARI ===========================
+
 async function returnToFixedChannel(guildId) {
     try {
         const guild = client.guilds.cache.get(guildId);
@@ -853,11 +774,7 @@ async function returnToFixedChannel(guildId) {
         const mevcutBaglanti = getVoiceConnection(guildId);
         if (!mevcutBaglanti || mevcutBaglanti.joinConfig.channelId !== SABIT_SES_KANALI_ID) {
             if (mevcutBaglanti) mevcutBaglanti.destroy();
-            const connection = joinVoiceChannel({
-                channelId: hedefKanal.id,
-                guildId: guild.id,
-                adapterCreator: guild.voiceAdapterCreator,
-            });
+            const connection = joinVoiceChannel({ channelId: hedefKanal.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
             await entersState(connection, VoiceConnectionStatus.Ready, 15000);
         }
     } catch (e) {}
@@ -875,11 +792,7 @@ async function playVideoWithAudio(guildId, channelId, textChannel, userId) {
         if (!voiceChannel || voiceChannel.type !== 2) throw new Error('Kanal yok');
         const existingConnection = getVoiceConnection(guildId);
         if (existingConnection) existingConnection.destroy();
-        const connection = joinVoiceChannel({
-            channelId: voiceChannel.id,
-            guildId: guild.id,
-            adapterCreator: guild.voiceAdapterCreator,
-        });
+        const connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
         await entersState(connection, VoiceConnectionStatus.Ready, 20000);
         const ffmpeg = spawn(ffmpegPath, ['-i', VIDEO_PATH, '-vn', '-acodec', 'pcm_s16le', '-ar', '48000', '-ac', '2', '-f', 's16le', '-loglevel', 'error', 'pipe:1']);
         const resource = createAudioResource(ffmpeg.stdout, { inputType: 'raw' });
@@ -888,29 +801,13 @@ async function playVideoWithAudio(guildId, channelId, textChannel, userId) {
         connection.subscribe(player);
         player.play(resource);
         if (textChannel) {
-            const embed = new EmbedBuilder()
-                .setColor(0xE30A17)
-                .setTitle('GENÇLİĞE HİTABE')
-                .setDescription(`🎥 **${voiceChannel.name}** kanalında çalınıyor...`)
-                .setFooter({ text: `UKRAYNAA ${BAYRAK}` })
-                .setTimestamp();
+            const embed = new EmbedBuilder().setColor(0xE30A17).setTitle('GENÇLİĞE HİTABE').setDescription(`🎥 **${voiceChannel.name}** kanalında çalınıyor...`).setFooter({ text: `MELEZYA ${BAYRAK}` }).setTimestamp();
             await textChannel.send({ embeds: [embed] });
         }
-        player.on(AudioPlayerStatus.Idle, () => {
-            ffmpeg.kill();
-            connection.destroy();
-            setTimeout(() => returnToFixedChannel(guildId), 2000);
-        });
-        player.on('error', () => {
-            ffmpeg.kill();
-            connection.destroy();
-            setTimeout(() => returnToFixedChannel(guildId), 2000);
-        });
+        player.on(AudioPlayerStatus.Idle, () => { ffmpeg.kill(); connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
+        player.on('error', () => { ffmpeg.kill(); connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
         return true;
-    } catch (e) {
-        setTimeout(() => returnToFixedChannel(guildId), 2000);
-        return false;
-    }
+    } catch (e) { setTimeout(() => returnToFixedChannel(guildId), 2000); return false; }
 }
 
 async function playIstiklal(guildId, channelId, textChannel, userId) {
@@ -925,11 +822,7 @@ async function playIstiklal(guildId, channelId, textChannel, userId) {
         if (!voiceChannel || voiceChannel.type !== 2) throw new Error('Kanal yok');
         const existingConnection = getVoiceConnection(guildId);
         if (existingConnection) existingConnection.destroy();
-        const connection = joinVoiceChannel({
-            channelId: voiceChannel.id,
-            guildId: guild.id,
-            adapterCreator: guild.voiceAdapterCreator,
-        });
+        const connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
         await entersState(connection, VoiceConnectionStatus.Ready, 20000);
         const resource = createAudioResource(ISTIKLAL_PATH);
         if (resource.volume) resource.volume.setVolume(audioSettings.volume / 100);
@@ -937,27 +830,13 @@ async function playIstiklal(guildId, channelId, textChannel, userId) {
         connection.subscribe(player);
         player.play(resource);
         if (textChannel) {
-            const embed = new EmbedBuilder()
-                .setColor(0xE30A17)
-                .setTitle('İSTİKLAL MARŞI')
-                .setDescription(`🎵 **${voiceChannel.name}** kanalında çalınıyor!`)
-                .setFooter({ text: `UKRAYNAA ${BAYRAK}` })
-                .setTimestamp();
+            const embed = new EmbedBuilder().setColor(0xE30A17).setTitle('İSTİKLAL MARŞI').setDescription(`🎵 **${voiceChannel.name}** kanalında çalınıyor!`).setFooter({ text: `MELEZYA ${BAYRAK}` }).setTimestamp();
             await textChannel.send({ embeds: [embed] });
         }
-        player.on(AudioPlayerStatus.Idle, () => {
-            connection.destroy();
-            setTimeout(() => returnToFixedChannel(guildId), 2000);
-        });
-        player.on('error', () => {
-            connection.destroy();
-            setTimeout(() => returnToFixedChannel(guildId), 2000);
-        });
+        player.on(AudioPlayerStatus.Idle, () => { connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
+        player.on('error', () => { connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
         return true;
-    } catch (e) {
-        setTimeout(() => returnToFixedChannel(guildId), 2000);
-        return false;
-    }
+    } catch (e) { setTimeout(() => returnToFixedChannel(guildId), 2000); return false; }
 }
 
 async function playCustomSound(guildId, channelId, textChannel, userId, filePath, fileName, bass = 0) {
@@ -978,27 +857,17 @@ async function playCustomSound(guildId, channelId, textChannel, userId, filePath
         let connection = getVoiceConnection(guildId);
         let isNew = false;
         if (!connection) {
-            connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: guild.id,
-                adapterCreator: guild.voiceAdapterCreator,
-            });
+            connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
             await entersState(connection, VoiceConnectionStatus.Ready, 15000);
             isNew = true;
         } else if (connection.joinConfig.channelId !== voiceChannel.id) {
             connection.destroy();
-            connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: guild.id,
-                adapterCreator: guild.voiceAdapterCreator,
-            });
+            connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
             await entersState(connection, VoiceConnectionStatus.Ready, 15000);
             isNew = true;
         }
         let ffmpegArgs = ['-i', filePath, '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'];
-        if (bass && bass !== 0) {
-            ffmpegArgs = ['-i', filePath, '-af', `bass=g=${bass}:f=100:w=0.8`, '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'];
-        }
+        if (bass && bass !== 0) ffmpegArgs = ['-i', filePath, '-af', `bass=g=${bass}:f=100:w=0.8`, '-f', 's16le', '-ar', '48000', '-ac', '2', 'pipe:1'];
         const ffmpeg = spawn(ffmpegPath, ffmpegArgs);
         const resource = createAudioResource(ffmpeg.stdout, { inputType: 'raw', inlineVolume: true });
         resource.ffmpeg = ffmpeg;
@@ -1007,39 +876,20 @@ async function playCustomSound(guildId, channelId, textChannel, userId, filePath
         connection.subscribe(player);
         player.play(resource);
         if (textChannel) {
-            const embed = new EmbedBuilder()
-                .setColor(0x4FC3F7)
-                .setTitle('SES ÇALINIYOR')
-                .setDescription(`🔊 **${voiceChannel.name}** → **${fileName}**`)
-                .setFooter({ text: `UKRAYNAA ${BAYRAK}` })
-                .setTimestamp();
+            const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle('SES ÇALINIYOR').setDescription(`🔊 **${voiceChannel.name}** → **${fileName}**`).setFooter({ text: `MELEZYA ${BAYRAK}` }).setTimestamp();
             await textChannel.send({ embeds: [embed] });
         }
-        player.on(AudioPlayerStatus.Idle, () => {
-            if (resource.ffmpeg) resource.ffmpeg.kill();
-            if (isNew) connection.destroy();
-            setTimeout(() => returnToFixedChannel(guildId), 2000);
-        });
-        player.on('error', () => {
-            if (resource.ffmpeg) resource.ffmpeg.kill();
-            if (isNew) connection.destroy();
-            setTimeout(() => returnToFixedChannel(guildId), 2000);
-        });
+        player.on(AudioPlayerStatus.Idle, () => { if (resource.ffmpeg) resource.ffmpeg.kill(); if (isNew) connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
+        player.on('error', () => { if (resource.ffmpeg) resource.ffmpeg.kill(); if (isNew) connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 2000); });
         return true;
-    } catch (e) {
-        setTimeout(() => returnToFixedChannel(guildId), 2000);
-        return false;
-    }
+    } catch (e) { setTimeout(() => returnToFixedChannel(guildId), 2000); return false; }
 }
 
 async function playJumpscare(guildId, channelId, targetUserId = null) {
     try {
         if (!JUMPSCARE_COOLDOWN.enabled) return false;
         const now = Date.now();
-        if (now - JUMPSCARE_COOLDOWN.lastReset > 86400000) {
-            JUMPSCARE_COOLDOWN.count = 0;
-            JUMPSCARE_COOLDOWN.lastReset = now;
-        }
+        if (now - JUMPSCARE_COOLDOWN.lastReset > 86400000) { JUMPSCARE_COOLDOWN.count = 0; JUMPSCARE_COOLDOWN.lastReset = now; }
         if (JUMPSCARE_COOLDOWN.count >= JUMPSCARE_COOLDOWN.maxPerDay) return false;
         const isWeb = targetUserId !== null;
         if (!isWeb && Math.random() > JUMPSCARE_COOLDOWN.chance) return false;
@@ -1060,20 +910,12 @@ async function playJumpscare(guildId, channelId, targetUserId = null) {
         let connection = getVoiceConnection(guildId);
         let isNew = false;
         if (!connection) {
-            connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: guild.id,
-                adapterCreator: guild.voiceAdapterCreator,
-            });
+            connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
             await entersState(connection, VoiceConnectionStatus.Ready, 15000);
             isNew = true;
         } else if (connection.joinConfig.channelId !== voiceChannel.id) {
             connection.destroy();
-            connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: guild.id,
-                adapterCreator: guild.voiceAdapterCreator,
-            });
+            connection = joinVoiceChannel({ channelId: voiceChannel.id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator });
             await entersState(connection, VoiceConnectionStatus.Ready, 15000);
             isNew = true;
         }
@@ -1085,29 +927,16 @@ async function playJumpscare(guildId, channelId, targetUserId = null) {
         player.play(resource);
         player.on(AudioPlayerStatus.Idle, () => {
             if (isNew) {
-                setTimeout(() => {
-                    if (connection.state.status !== 'destroyed') connection.destroy();
-                    setTimeout(() => returnToFixedChannel(guildId), 1000);
-                }, 2000);
-            } else {
-                setTimeout(() => returnToFixedChannel(guildId), 1000);
-            }
+                setTimeout(() => { if (connection.state.status !== 'destroyed') connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 1000); }, 2000);
+            } else { setTimeout(() => returnToFixedChannel(guildId), 1000); }
         });
         player.on('error', () => {
             if (isNew) {
-                setTimeout(() => {
-                    if (connection.state.status !== 'destroyed') connection.destroy();
-                    setTimeout(() => returnToFixedChannel(guildId), 1000);
-                }, 2000);
-            } else {
-                setTimeout(() => returnToFixedChannel(guildId), 1000);
-            }
+                setTimeout(() => { if (connection.state.status !== 'destroyed') connection.destroy(); setTimeout(() => returnToFixedChannel(guildId), 1000); }, 2000);
+            } else { setTimeout(() => returnToFixedChannel(guildId), 1000); }
         });
         return true;
-    } catch (e) {
-        setTimeout(() => returnToFixedChannel(guildId), 1000);
-        return false;
-    }
+    } catch (e) { setTimeout(() => returnToFixedChannel(guildId), 1000); return false; }
 }
 
 client.login(token);
