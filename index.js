@@ -49,7 +49,7 @@ const EMOJIS = {
     tik: '<a:tik:1546323559008178367>',
     bbknk: '<a:bbknk:1546323191918624768>',
     hosgeldin: '<a:Hosgeldin:1546322757938188308>',
-    kale: '<:logo:1561070770266968205>',
+    kale: '<:logo:1561439840351035434>',
     ataturk: '🇹🇷',
     bayrak: BAYRAK,
     yukleniyor: YUKLENIYOR,
