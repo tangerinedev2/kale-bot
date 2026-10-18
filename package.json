@@ -1,7 +1,7 @@
 {
-  "name": "kale-bot",
+  "name": "melezya-bot",
   "version": "1.0.0",
-  "description": "KALE Discord Bot - FadeHost sürümü",
+  "description": "MELEZYA Discord Bot - FadeHost sürümü",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
