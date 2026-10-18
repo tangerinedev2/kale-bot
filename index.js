@@ -3,9 +3,6 @@ const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerSta
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
 
 const db = require('./data/db.js');
 
@@ -280,73 +277,6 @@ async function acilDurum(guild) {
         return true;
     } catch (e) { console.error('Acil durum hatası:', e); return false; }
 }
-
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
-
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-
-app.get('/api/jumpscare/stats', (req, res) => {
-    res.json({ success: true, count: JUMPSCARE_COOLDOWN.count, maxPerDay: JUMPSCARE_COOLDOWN.maxPerDay, enabled: JUMPSCARE_COOLDOWN.enabled, chance: JUMPSCARE_COOLDOWN.chance, toplamDosya: JUMPSCARE_FILES.length, logs: [] });
-});
-app.post('/api/jumpscare/settings', (req, res) => {
-    const { enabled } = req.body;
-    if (typeof enabled === 'boolean') { JUMPSCARE_COOLDOWN.enabled = enabled; res.json({ success: true, enabled }); }
-    else res.json({ success: false, error: 'enabled boolean olmalı' });
-});
-app.get('/api/audio/settings', (req, res) => {
-    res.json({ success: true, settings: { volume: audioSettings.volume, bass: audioSettings.bass } });
-});
-app.post('/api/audio/settings', (req, res) => {
-    const { volume, bass } = req.body;
-    if (typeof volume === 'number') audioSettings.volume = Math.max(0, Math.min(200, volume));
-    if (typeof bass === 'number') audioSettings.bass = Math.max(-10, Math.min(10, bass));
-    res.json({ success: true, settings: { volume: audioSettings.volume, bass: audioSettings.bass } });
-});
-app.get('/api/sounds', (req, res) => {
-    try { res.json({ success: true, sounds: getMeemFiles().map(f => ({ name: path.basename(f, '.mp3') })) }); }
-    catch (e) { res.json({ success: false, error: e.message, sounds: [] }); }
-});
-app.post('/api/playsound/:soundName', async (req, res) => {
-    try {
-        const soundName = req.params.soundName;
-        const targetId = req.query.target;
-        if (!targetId) return res.json({ success: false, error: 'Hedef yok' });
-        const guild = client.guilds.cache.get(GUILD_ID);
-        if (!guild) return res.json({ success: false, error: 'Sunucu yok' });
-        const member = guild.members.cache.get(targetId);
-        if (!member) return res.json({ success: false, error: 'Kullanıcı yok' });
-        if (!member.voice.channel) return res.json({ success: false, error: 'Seste değil' });
-        const filePath = path.join(MEEM_KLASORU, `${soundName}.mp3`);
-        if (!fs.existsSync(filePath)) return res.json({ success: false, error: 'Dosya yok' });
-        const ok = await playCustomSound(GUILD_ID, member.voice.channel.id, null, null, filePath, soundName, audioSettings.bass);
-        res.json({ success: ok });
-    } catch (e) { res.json({ success: false, error: e.message }); }
-});
-
-io.on('connection', (socket) => {
-    const sendUsers = async () => {
-        try {
-            const guild = client.guilds.cache.get(GUILD_ID);
-            if (!guild) return;
-            const uyeler = [];
-            guild.channels.cache.filter(ch => ch.type === 2).forEach(kanal => {
-                kanal.members.forEach(member => {
-                    if (!member.user.bot) uyeler.push({ id: member.id, username: member.user.username, displayName: member.displayName, avatar: member.user.displayAvatarURL({ dynamic: true, size: 128 }), channelId: kanal.id, channelName: kanal.name });
-                });
-            });
-            socket.emit('users_update', uyeler);
-        } catch (e) {}
-    };
-    sendUsers();
-    const interval = setInterval(sendUsers, 5000);
-    socket.on('disconnect', () => clearInterval(interval));
-});
-
-server.listen(3000, () => console.log(`🌐 Web: http://localhost:3000`));
 
 const client = new Client({
     intents: [
