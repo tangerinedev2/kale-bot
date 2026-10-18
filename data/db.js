@@ -1,5 +1,5 @@
 // ============================================================
-// KALE BOT - SQLite Veritabanı Modülü
+// MELEZYA BOT - SQLite Veritabanı Modülü
 // node:sqlite (Node 22.13+)
 // ============================================================
 
@@ -10,7 +10,6 @@ const path = require('path');
 const DB_PATH = path.join(__dirname, 'kale.db');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
-// Veritabanı bağlantısı (singleton)
 let db = null;
 
 function getDB() {
@@ -39,7 +38,7 @@ function getDB() {
 }
 
 // ============================================================
-// YARDIMCI FONKSİYONLAR
+// AYARLAR
 // ============================================================
 
 function loadSettings() {
@@ -61,6 +60,16 @@ function setSetting(key, value) {
     `).run(key, String(value), String(value));
 }
 
+function getSetting(key) {
+    const database = getDB();
+    const row = database.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+    return row ? row.value : null;
+}
+
+// ============================================================
+// APO SAYAÇ
+// ============================================================
+
 function getApoCount() {
     const database = getDB();
     const row = database.prepare('SELECT count FROM apo_sayac WHERE id = 1').get();
@@ -72,6 +81,10 @@ function incrementApoCount() {
     database.prepare('UPDATE apo_sayac SET count = count + 1, updatedAt = CURRENT_TIMESTAMP WHERE id = 1').run();
     return getApoCount();
 }
+
+// ============================================================
+// KULLANICI
+// ============================================================
 
 function ensureUser(userId, username, displayName, isBot = false) {
     const database = getDB();
@@ -113,6 +126,10 @@ function incrementUserVoice(userId, minutes) {
     `).run(minutes, userId);
 }
 
+// ============================================================
+// UYARILAR
+// ============================================================
+
 function addWarn(userId, reason, byUser, byUserId) {
     const database = getDB();
     const result = database.prepare(`
@@ -132,6 +149,20 @@ function getWarnCount(userId) {
     const row = database.prepare('SELECT COUNT(*) as count FROM warns WHERE userId = ?').get(userId);
     return row ? row.count : 0;
 }
+
+function removeWarn(warnId) {
+    const database = getDB();
+    database.prepare('DELETE FROM warns WHERE id = ?').run(warnId);
+}
+
+function clearWarns(userId) {
+    const database = getDB();
+    database.prepare('DELETE FROM warns WHERE userId = ?').run(userId);
+}
+
+// ============================================================
+// GÖZALTI
+// ============================================================
 
 function addCustody(userId, reason, byUser, byUserId) {
     const database = getDB();
@@ -162,6 +193,10 @@ function isInCustody(userId) {
     return !!row;
 }
 
+// ============================================================
+// MODERASYON
+// ============================================================
+
 function addModeration(userId, type, reason, duration, byUser, byUserId) {
     const database = getDB();
     database.prepare(`
@@ -170,6 +205,10 @@ function addModeration(userId, type, reason, duration, byUser, byUserId) {
     `).run(userId, type, reason || '', duration || 0, byUser || '', byUserId || '');
 }
 
+// ============================================================
+// KOMUT LOGU
+// ============================================================
+
 function addCommandLog(userId, command, args, channelId) {
     const database = getDB();
     database.prepare(`
@@ -177,6 +216,10 @@ function addCommandLog(userId, command, args, channelId) {
         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `).run(userId, command, args || '', channelId || '');
 }
+
+// ============================================================
+// MESAJ LOGU
+// ============================================================
 
 function addMessageLog(userId, messageId, channelId, channelName, content, attachments, mentions) {
     const database = getDB();
@@ -194,6 +237,19 @@ function addMessageLog(userId, messageId, channelId, channelName, content, attac
         JSON.stringify(mentions || [])
     );
 }
+
+function searchMessages(userId, kelime) {
+    const database = getDB();
+    return database.prepare(`
+        SELECT * FROM messages 
+        WHERE userId = ? AND content LIKE ? 
+        ORDER BY date DESC LIMIT 200
+    `).all(userId, `%${kelime}%`);
+}
+
+// ============================================================
+// SES
+// ============================================================
 
 function addVoiceSession(userId, channelId, channelName, type, duration, startTime, endTime) {
     const database = getDB();
@@ -223,6 +279,10 @@ function updateActivity(userId, date, messages, voiceMinutes) {
     `).run(userId, date, messages || 0, voiceMinutes || 0, Date.now(), Date.now(), messages || 0, voiceMinutes || 0, Date.now());
 }
 
+// ============================================================
+// KATILMA / AYRILMA
+// ============================================================
+
 function addJoinLeave(userId, type, tag, memberCount) {
     const database = getDB();
     database.prepare(`
@@ -230,6 +290,10 @@ function addJoinLeave(userId, type, tag, memberCount) {
         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `).run(userId, type, tag || '', memberCount || 0);
 }
+
+// ============================================================
+// GEÇMİŞ KAYITLARI
+// ============================================================
 
 function addNicknameHistory(userId, oldNick, newNick) {
     const database = getDB();
@@ -271,6 +335,10 @@ function addActivityHistory(userId, oldActivity, newActivity) {
     `).run(userId, oldActivity || '', newActivity || '');
 }
 
+// ============================================================
+// MENTION / TEPKİ
+// ============================================================
+
 function addMention(userId, mentionedUserId, channelId, channelName) {
     const database = getDB();
     database.prepare(`
@@ -302,6 +370,10 @@ function addReactionReceived(userId, emoji, fromUserId, fromUsername, channelId,
         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `).run(userId, emoji, fromUserId, fromUsername || '', channelId, channelName);
 }
+
+// ============================================================
+// LİNK / DOSYA / EMOJİ
+// ============================================================
 
 function addLink(userId, url, channelId, channelName) {
     const database = getDB();
@@ -335,6 +407,10 @@ function addRoleHistory(userId, roleId, roleName, type, byUser, byUserId) {
     `).run(userId, roleId, roleName || '', type, byUser || '', byUserId || '');
 }
 
+// ============================================================
+// DAVET
+// ============================================================
+
 function saveInvite(code, inviterId, inviterTag, channelId, uses, maxUses, maxAge, temporary, createdAt) {
     const database = getDB();
     database.prepare(`
@@ -366,6 +442,10 @@ function getTopInviters(limit = 10) {
     `).all(limit);
 }
 
+// ============================================================
+// SUNUCU İSTATİSTİK / HATA
+// ============================================================
+
 function addServerStats(memberCount, onlineCount, boostCount, channelCount, roleCount) {
     const database = getDB();
     database.prepare(`
@@ -383,7 +463,108 @@ function addErrorLog(command, error, stack, userId, guildId) {
 }
 
 // ============================================================
-// İSTATİSTİK FONKSİYONLARI
+// OTOMATİK MODERASYON - KELİMELER
+// ============================================================
+
+function getAutomodKelimeler() {
+    const database = getDB();
+    return database.prepare('SELECT kelime FROM automod_kelimeler ORDER BY kelime ASC').all().map(r => r.kelime);
+}
+
+function addAutomodKelime(kelime) {
+    const database = getDB();
+    try {
+        database.prepare('INSERT OR IGNORE INTO automod_kelimeler (kelime) VALUES (?)').run(kelime.toLowerCase().trim());
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function removeAutomodKelime(kelime) {
+    const database = getDB();
+    const result = database.prepare('DELETE FROM automod_kelimeler WHERE kelime = ?').run(kelime.toLowerCase().trim());
+    return result.changes > 0;
+}
+
+function automodKelimeVarMi(kelime) {
+    const database = getDB();
+    const row = database.prepare('SELECT kelime FROM automod_kelimeler WHERE kelime = ?').get(kelime.toLowerCase().trim());
+    return !!row;
+}
+
+// ============================================================
+// OTOMATİK MODERASYON - İZİNLİ KANALLAR
+// ============================================================
+
+function getAutomodIzinliKanallar() {
+    const database = getDB();
+    return database.prepare('SELECT channelId FROM automod_izinli_kanallar').all().map(r => r.channelId);
+}
+
+function addAutomodIzinliKanal(channelId) {
+    const database = getDB();
+    try {
+        database.prepare('INSERT OR IGNORE INTO automod_izinli_kanallar (channelId) VALUES (?)').run(channelId);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function removeAutomodIzinliKanal(channelId) {
+    const database = getDB();
+    const result = database.prepare('DELETE FROM automod_izinli_kanallar WHERE channelId = ?').run(channelId);
+    return result.changes > 0;
+}
+
+function automodKanalIzinliMi(channelId) {
+    const database = getDB();
+    const row = database.prepare('SELECT channelId FROM automod_izinli_kanallar WHERE channelId = ?').get(channelId);
+    return !!row;
+}
+
+// ============================================================
+// OTOMATİK MODERASYON - LOG
+// ============================================================
+
+function addAutomodLog(userId, channelId, ruleType, content, action) {
+    const database = getDB();
+    database.prepare(`
+        INSERT INTO automod_logs (userId, channelId, ruleType, content, action, date)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).run(userId, channelId || '', ruleType, content || '', action || '');
+}
+
+function getAutomodLogs(limit = 50) {
+    const database = getDB();
+    return database.prepare('SELECT * FROM automod_logs ORDER BY date DESC LIMIT ?').all(limit);
+}
+
+function getAutomodLogsByUser(userId, limit = 50) {
+    const database = getDB();
+    return database.prepare('SELECT * FROM automod_logs WHERE userId = ? ORDER BY date DESC LIMIT ?').all(userId, limit);
+}
+
+// ============================================================
+// RAID EVENT
+// ============================================================
+
+function addRaidEvent(katilimciSayisi, aksiyon) {
+    const database = getDB();
+    database.prepare(`
+        INSERT INTO raid_events (katilimciSayisi, aksiyon, tarih)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+    `).run(katilimciSayisi || 0, aksiyon || '');
+}
+
+function getRaidEvents(limit = 20) {
+    const database = getDB();
+    return database.prepare('SELECT * FROM raid_events ORDER BY tarih DESC LIMIT ?').all(limit);
+}
+
+// ============================================================
+// İSTATİSTİK
 // ============================================================
 
 function getTopMessageUsers(limit = 10) {
@@ -418,13 +599,37 @@ function getTotalMessages() {
     return row ? row.count : 0;
 }
 
+function getLogStats() {
+    const database = getDB();
+    const tables = [
+        'users', 'messages', 'commands', 'voice_sessions', 'voice_periods',
+        'warns', 'moderation', 'automod_logs', 'raid_events', 'joins_leaves',
+        'links', 'files', 'emojis_used', 'mentions', 'mentioned_by',
+        'reactions_given', 'reactions_received', 'role_history',
+        'nickname_history', 'username_history', 'avatar_history',
+        'status_history', 'activity_history', 'error_logs'
+    ];
+    const stats = {};
+    for (const table of tables) {
+        try {
+            const row = database.prepare(`SELECT COUNT(*) as count FROM ${table}`).get();
+            stats[table] = row ? row.count : 0;
+        } catch (e) {
+            stats[table] = 0;
+        }
+    }
+    return stats;
+}
+
 // ============================================================
 // EXPORT
 // ============================================================
+
 module.exports = {
     getDB,
     loadSettings,
     setSetting,
+    getSetting,
     getApoCount,
     incrementApoCount,
     ensureUser,
@@ -434,6 +639,8 @@ module.exports = {
     addWarn,
     getWarns,
     getWarnCount,
+    removeWarn,
+    clearWarns,
     addCustody,
     removeCustody,
     getCustodyList,
@@ -441,6 +648,7 @@ module.exports = {
     addModeration,
     addCommandLog,
     addMessageLog,
+    searchMessages,
     addVoiceSession,
     addVoicePeriod,
     updateActivity,
@@ -463,8 +671,22 @@ module.exports = {
     getTopInviters,
     addServerStats,
     addErrorLog,
+    getAutomodKelimeler,
+    addAutomodKelime,
+    removeAutomodKelime,
+    automodKelimeVarMi,
+    getAutomodIzinliKanallar,
+    addAutomodIzinliKanal,
+    removeAutomodIzinliKanal,
+    automodKanalIzinliMi,
+    addAutomodLog,
+    getAutomodLogs,
+    getAutomodLogsByUser,
+    addRaidEvent,
+    getRaidEvents,
     getTopMessageUsers,
     getTopVoiceUsers,
     getTotalUsers,
-    getTotalMessages
+    getTotalMessages,
+    getLogStats
 };
