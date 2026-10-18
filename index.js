@@ -41,7 +41,7 @@ const ADMIN_ONLY_COMMANDS = [
     'temizle', 'sil', 'kick', 'ban', 'unban',
     'duyuru', 'oylama', 'embed',
     'yedek', 'ayar', 'debug',
-    'uyar', 'sustur', 'susturma-kaldır', 'slowmode', 'kanal-kilit', 'kanal-aç'
+    'uyar', 'uyarılar', 'uyarı-sil', 'uyarisil', 'sustur', 'susturma-kaldır', 'slowmode', 'kanal-kilit', 'kanal-aç'
 ];
 
 const EMOJIS = {
@@ -74,6 +74,31 @@ const EMOJIS = {
     saat: '🕐',
     kulak: '👂'
 };
+
+// =========================== UYARI ROLLERİ ===========================
+const UYARI_ROLLERI = {
+    1: '1560730288546652261',
+    2: '1560730313112682669',
+    3: '1560730335560601681',
+    4: '1560730354648612975',
+    5: '1560730482101067817'
+};
+
+async function uyariRolGuncelle(guild, member, warnCount) {
+    try {
+        const tumRoller = Object.values(UYARI_ROLLERI).map(id => guild.roles.cache.get(id)).filter(r => r);
+        for (const rol of tumRoller) {
+            if (member.roles.cache.has(rol.id)) {
+                await member.roles.remove(rol, `Uyarı rolü güncelleniyor (${warnCount} uyarı)`).catch(() => {});
+            }
+        }
+        const seviye = Math.min(warnCount, 5);
+        if (seviye >= 1) {
+            const rol = guild.roles.cache.get(UYARI_ROLLERI[seviye]);
+            if (rol) await member.roles.add(rol, `${warnCount} uyarı`).catch(() => {});
+        }
+    } catch (e) { console.error('Uyarı rol güncelleme hatası:', e); }
+}
 
 let ayarlar = db.loadSettings();
 function loadAyarlar() { ayarlar = db.loadSettings(); }
@@ -364,7 +389,7 @@ client.once('ready', async () => {
     } catch (e) { console.error('❌ Slash komut kaydı başarısız:', e); }
     await updateBotStatus();
     setInterval(updateBotStatus, 30000);
-    require('./komutlar.js')(client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG_CHANNEL_ID, KURAL_KANAL_ID, ACIL_DURUM_SIFRE, acilDurum, ayarlar, saveAyarlar, appendUserLog, loadUserLog, saveUserLog, getUserAktiflik, saveAktiflik, getUserWarns, saveWarns, warns, ATATURK_IMAGE, ATATURK_SOZLER, ATATURK_BILGI, RESIM_KLASORU, VIDEO_PATH, ISTIKLAL_PATH, ffmpegPath, audioSettings, playVideoWithAudio, playIstiklal, playCustomSound, playJumpscare, returnToFixedChannel, getMeemFiles, JUMPSCARE_COOLDOWN, JUMPSCARE_FILES);
+    require('./komutlar.js')(client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG_CHANNEL_ID, KURAL_KANAL_ID, ACIL_DURUM_SIFRE, acilDurum, ayarlar, saveAyarlar, appendUserLog, loadUserLog, saveUserLog, getUserAktiflik, saveAktiflik, getUserWarns, saveWarns, warns, ATATURK_IMAGE, ATATURK_SOZLER, ATATURK_BILGI, RESIM_KLASORU, VIDEO_PATH, ISTIKLAL_PATH, ffmpegPath, audioSettings, playVideoWithAudio, playIstiklal, playCustomSound, playJumpscare, returnToFixedChannel, getMeemFiles, JUMPSCARE_COOLDOWN, JUMPSCARE_FILES, uyariRolGuncelle);
 });
 
 let statusIndex = 0;
@@ -395,7 +420,7 @@ client.on('guildMemberAdd', async (member) => {
         try { const role = member.guild.roles.cache.get(AUTO_ROLE_ID); if (role) await member.roles.add(role); } catch (e) {}
         const embed = new EmbedBuilder()
             .setColor(0xE30A17).setTitle('HOŞ GELDİN!')
-            .setDescription(`${EMOJIS.kale} **${member.user.globalName || member.user.username}** aramıza katıldı!\n${EMOJIS.bbknk} Sunucumuz **${member.guild.memberCount}** kişi oldu!\n${EMOJIS.tik} **Kuralları okumayı unutma!**\n${BAYRAK} *Ne mutlu Türk'üm diyene!*`)
+            .setDescription(`<:logo:1561439840351035434> **${member.user.globalName || member.user.username}** aramıza katıldı!\n${EMOJIS.bbknk} Sunucumuz **${member.guild.memberCount}** kişi oldu!\n${EMOJIS.tik} **Kuralları okumayı unutma!**\n${BAYRAK} *Ne mutlu Türk'üm diyene!*`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setFooter({ text: `MELEZYA Ailesi ${BAYRAK}`, iconURL: member.guild.iconURL() })
             .setTimestamp();
@@ -717,7 +742,7 @@ client.on('messageCreate', async (message) => {
     if (content === 'sa') {
         const embed = new EmbedBuilder()
             .setColor(0xE30A17)
-            .setDescription(`${EMOJIS.kale} **Aleyküm Selam, ${message.author.globalName || message.author.username}!**\n${EMOJIS.hosgeldin} *Hoş geldin!*\n${BAYRAK} **Ne mutlu Türk'üm diyene!**`)
+            .setDescription(`<:logo:1561439840351035434> **Aleyküm Selam, ${message.author.globalName || message.author.username}!**\n${EMOJIS.hosgeldin} *Hoş geldin!*\n${BAYRAK} **Ne mutlu Türk'üm diyene!**`)
             .setFooter({ text: `MELEZYA ${BAYRAK}`, iconURL: message.guild.iconURL() })
             .setTimestamp();
         try { await message.channel.send({ embeds: [embed] }); } catch (e) {}
@@ -744,7 +769,7 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
     if (interaction.guild.id !== GUILD_ID) return;
     if (interaction.customId === 'kurallar') await interaction.reply({ content: `📜 **Kurallar:** <#${KURAL_KANAL_ID}>`, ephemeral: true });
-    if (interaction.customId === 'hosgeldin') await interaction.reply({ content: `${EMOJIS.kale} **Hoş Geldin!** ${BAYRAK}`, ephemeral: true });
+    if (interaction.customId === 'hosgeldin') await interaction.reply({ content: `<:logo:1561439840351035434> **Hoş Geldin!** ${BAYRAK}`, ephemeral: true });
     if (interaction.customId === 'duello_kabul') await interaction.reply({ content: `⚔️ **${interaction.user}** düelloyu kabul etti!` });
     if (interaction.customId === 'duello_red') await interaction.reply({ content: `❌ **${interaction.user}** düelloyu reddetti.` });
 });
@@ -752,7 +777,7 @@ client.on('interactionCreate', async (interaction) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     if (interaction.commandName === 'yardim') {
-        const embed = new EmbedBuilder().setColor(0xE30A17).setTitle('MELEZYA BOT').setDescription('Tüm komutlar `m!` ile başlar. `m!yardim` yazarak detayları görebilirsin.').setFooter({ text: `MELEZYA ${BAYRAK}` }).setTimestamp();
+        const embed = new EmbedBuilder().setColor(0xE30A17).setTitle('MELEZYA BOT').setDescription('Tüm komutlar `mz!` ile başlar. `mz!yardim` yazarak detayları görebilirsin.').setFooter({ text: `MELEZYA ${BAYRAK}` }).setTimestamp();
         await interaction.reply({ embeds: [embed] });
     }
     if (interaction.commandName === 'aktifgelistirici') {
