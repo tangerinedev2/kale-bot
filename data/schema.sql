@@ -465,6 +465,42 @@ INSERT OR IGNORE INTO settings (key, value) VALUES ('log_rol_sil', 'true');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('log_otomatik_mod', 'true');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('log_timeout', 'true');
 
+-- AUTOMOD_LOGS
+CREATE TABLE IF NOT EXISTS automod_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId TEXT NOT NULL,
+    channelId TEXT,
+    ruleType TEXT NOT NULL,
+    content TEXT,
+    action TEXT,
+    date TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AUTOMOD_KELIMELER
+CREATE TABLE IF NOT EXISTS automod_kelimeler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kelime TEXT UNIQUE NOT NULL,
+    eklendigiTarih TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AUTOMOD_IZINLI_KANALLAR
+CREATE TABLE IF NOT EXISTS automod_izinli_kanallar (
+    channelId TEXT PRIMARY KEY,
+    eklenmeTarihi TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- RAID_EVENTS
+CREATE TABLE IF NOT EXISTS raid_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    katilimciSayisi INTEGER,
+    tarih TEXT DEFAULT CURRENT_TIMESTAMP,
+    aksiyon TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_automod_logs_userId ON automod_logs(userId);
+CREATE INDEX IF NOT EXISTS idx_automod_logs_ruleType ON automod_logs(ruleType);
+CREATE INDEX IF NOT EXISTS idx_automod_logs_date ON automod_logs(date);
+
 -- ============================================================
 -- SON
 -- ============================================================
