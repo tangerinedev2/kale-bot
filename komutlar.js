@@ -27,7 +27,7 @@ const EMOJI = {
     trbayrak: '<a:trbayrak:1546565825304072365>',
     bbknk: '<a:bbknk:1546323191918624768>',
     hosgeldin: '<a:Hosgeldin:1546322757938188308>',
-    kale: '<:logo:1561439840351035434>',
+    kale: '<:logo:1561718747411251250>',
     bilgi: '<:bilgi:1559527127961837668>',
     banhammer: '<:banhammer:1559526130560794645>',
     kick: '<:kick:1559528100998414346>',
@@ -60,7 +60,7 @@ const EMOJI = {
 };
 
 const BAŞLIK = `${EMOJI.kale} `;
-const FOOTER = `MELEZYA ${EMOJI.trbayrak}`;
+const FOOTER = `CEZAİR ${EMOJI.trbayrak}`;
 
 async function safeFetch(url, options = {}, timeout = 10000) {
     const controller = new AbortController();
@@ -95,7 +95,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
         'otomod-kelime-ekle', 'otomod-kelime-sil', 'otomod-kelime-liste',
         'otomod-izinli-kanal-ekle', 'otomod-izinli-kanal-sil', 'otomod-izinli-kanal-liste',
         'otomod-durum', 'otomod-aç', 'otomod-ac', 'otomod-kapa',
-        'yedek-al'
+        'yedek-al', 'takipurl', 'takip-liste', 'takip-sil'
     ];
 
     const FIKRALAR = [
@@ -188,6 +188,109 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 return;
             }
 
+            // ==================== TAKİP URL ====================
+            if (command === 'takipurl') {
+                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
+                const input = args[0];
+                if (!input) return message.reply(`${EMOJI.carpi} Bir davet kodu veya URL belirt! Örnek: \`${PREFIX}takipurl capulcu\``);
+
+                let code = input
+                    .replace(/^https?:\/\//i, '')
+                    .replace(/^(www\.)?(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\//i, '')
+                    .replace(/\/$/, '');
+
+                if (!code || code.length < 2) return message.reply(`${EMOJI.carpi} Geçersiz davet kodu.`);
+
+                const davetUrl = `https://discord.gg/${code}`;
+                const kontrolUrl = `https://discord.com/api/v10/invites/${code}`;
+
+                try {
+                    const ilkKontrol = await safeFetch(kontrolUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 10000);
+                    if (!ilkKontrol.ok) {
+                        return message.reply(`${EMOJI.carpi} **${davetUrl}** geçerli bir davet değil veya süresi dolmuş. (HTTP ${ilkKontrol.status})`);
+                    }
+                    const davetData = await ilkKontrol.json();
+                    const sunucuAdi = davetData.guild?.name || 'Bilinmiyor';
+                    const uyeSayisi = davetData.approximate_member_count || '?';
+
+                    if (!global.takipListesi) global.takipListesi = new Map();
+                    if (global.takipListesi.has(code)) {
+                        return message.reply(`${EMOJI.bilgi} **${davetUrl}** zaten takip listesinde.`);
+                    }
+
+                    global.takipListesi.set(code, {
+                        url: davetUrl,
+                        kanalId: message.channel.id,
+                        userId: message.author.id,
+                        baslangic: Date.now(),
+                        sonDurum: 'aktif'
+                    });
+
+                    await message.reply(`${EMOJI.tik} **${davetUrl}** takibe alındı.\nSunucu: **${sunucuAdi}** (${uyeSayisi} üye)\nKontrol aralığı: 5 dakika`);
+
+                    if (!global.takipInterval) {
+                        global.takipInterval = setInterval(async () => {
+                            if (!global.takipListesi || global.takipListesi.size === 0) return;
+                            for (const [c, data] of global.takipListesi) {
+                                try {
+                                    const res = await fetch(`https://discord.com/api/v10/invites/${c}`, {
+                                        headers: { 'User-Agent': 'Mozilla/5.0' },
+                                        signal: AbortSignal.timeout(10000)
+                                    });
+                                    if (res.status === 404 || !res.ok) {
+                                        if (data.sonDurum === 'aktif') {
+                                            data.sonDurum = 'bos';
+                                            const user = await client.users.fetch(data.userId).catch(() => null);
+                                            const kanal = await client.channels.fetch(data.kanalId).catch(() => null);
+                                            const mesaj = `URL BOŞALDI!!! ${data.url}`;
+                                            if (user) { try { await user.send(mesaj); } catch (e) {} }
+                                            if (kanal) { try { await kanal.send(`<@${data.userId}> ${mesaj}`); } catch (e) {} }
+                                        }
+                                    } else {
+                                        if (data.sonDurum === 'bos') {
+                                            data.sonDurum = 'aktif';
+                                            const user = await client.users.fetch(data.userId).catch(() => null);
+                                            if (user) { try { await user.send(`URL TEKRAR AKTİF: ${data.url}`); } catch (e) {} }
+                                        }
+                                    }
+                                } catch (e) {}
+                            }
+                        }, 5 * 60 * 1000);
+                    }
+                } catch (e) {
+                    await message.reply(`${EMOJI.carpi} Davet kontrol edilemedi: \`${e.message}\``);
+                }
+                return;
+            }
+
+            if (command === 'takip-liste') {
+                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
+                if (!global.takipListesi || global.takipListesi.size === 0) return message.reply(`${EMOJI.bilgi} Takip listesi boş.`);
+                let desc = '';
+                let i = 1;
+                for (const [code, data] of global.takipListesi) {
+                    desc += `**${i}.** ${data.url} — Durum: \`${data.sonDurum}\`\n`;
+                    i++;
+                }
+                const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.bilgi} TAKİP LİSTESİ`).setDescription(desc).setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            if (command === 'takip-sil') {
+                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
+                const input = args[0];
+                if (!input) return message.reply(`${EMOJI.carpi} Silinecek davet kodunu belirt!`);
+                const code = input.replace(/^https?:\/\/(www\.)?(discord\.gg|discord\.com\/invite)\//i, '').replace(/\/$/, '');
+                if (global.takipListesi && global.takipListesi.has(code)) {
+                    global.takipListesi.delete(code);
+                    await message.reply(`${EMOJI.tik} **${code}** takip listesinden çıkarıldı.`);
+                } else {
+                    await message.reply(`${EMOJI.carpi} **${code}** takip listesinde yok.`);
+                }
+                return;
+            }
+
             if (command === 'apoyabas') {
                 const apoCount = db.incrementApoCount();
                 const level = Math.floor(Math.random() * 100) + 1;
@@ -270,7 +373,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 testSonuclari.push(`${EMOJI.tik} SQLite Apo Sayaç: ${db.getApoCount()}`);
                 testSonuclari.push(`${EMOJI.tik} Automod Kelime: ${db.getAutomodKelimeler().length}`);
                 testSonuclari.push(`${EMOJI.tik} Automod İzinli Kanal: ${db.getAutomodIzinliKanallar().length}`);
-                const rapor = `MELEZYA BOT DEBUG RAPORU\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n${testSonuclari.join('\n')}`;
+                const rapor = `CEZAİR BOT DEBUG RAPORU\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n${testSonuclari.join('\n')}`;
                 const buffer = Buffer.from(rapor, 'utf-8');
                 const attachment = new AttachmentBuilder(buffer, { name: `debug-${Date.now()}.log` });
                 try {
@@ -481,7 +584,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 try {
                     const sonuclar = db.searchMessages(user.id, kelime);
                     if (sonuclar.length === 0) return message.reply(`${EMOJI.bilgi} **${user.tag}** kullanıcısının mesajlarında \`${kelime}\` bulunamadı.`);
-                    let content = `MELEZYA LOG ARAMA\nKullanıcı: ${user.tag} (${user.id})\nAranan: "${kelime}"\nSonuç: ${sonuclar.length} mesaj\n\n`;
+                    let content = `CEZAİR LOG ARAMA\nKullanıcı: ${user.tag} (${user.id})\nAranan: "${kelime}"\nSonuç: ${sonuclar.length} mesaj\n\n`;
                     for (const m of sonuclar) {
                         content += `[${new Date(m.date).toLocaleString('tr-TR')}] #${m.channelName}: ${m.content}\n`;
                     }
@@ -573,7 +676,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
                 const kelimeler = db.getAutomodKelimeler();
                 if (kelimeler.length === 0) return message.reply(`${EMOJI.bilgi} Küfür listesi boş.`);
-                let content = `MELEZYA KÜFÜR LİSTESİ (${kelimeler.length} kelime)\n\n${kelimeler.join(', ')}`;
+                let content = `CEZAİR KÜFÜR LİSTESİ (${kelimeler.length} kelime)\n\n${kelimeler.join(', ')}`;
                 const buffer = Buffer.from(content, 'utf-8');
                 const attachment = new AttachmentBuilder(buffer, { name: `kufur-listesi-${Date.now()}.txt` });
                 try {
@@ -971,7 +1074,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             }
 
             if (command === 'bot' || command === 'info') {
-                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.bot_logo} MELEZYA BOT`).setDescription(`**Geliştirici:** <@${ADMIN_ID}>\n**Sunucu:** ${message.guild.name}\n**Hizmet:** \`${message.guild.memberCount}\`\n**Ping:** \`${client.ws.ping}ms\`\n**Çalışma:** \`${Math.floor(process.uptime()/3600)} saat\`\n**Veritabanı:** \`SQLite\`\n**Komut:** \`90+\``).setFooter({ text: FOOTER });
+                const embed = new EmbedBuilder().setColor(0xE30A17).setTitle(`${EMOJI.bot_logo} CEZAİR BOT`).setDescription(`**Geliştirici:** <@${ADMIN_ID}>\n**Sunucu:** ${message.guild.name}\n**Hizmet:** \`${message.guild.memberCount}\`\n**Ping:** \`${client.ws.ping}ms\`\n**Çalışma:** \`${Math.floor(process.uptime()/3600)} saat\`\n**Veritabanı:** \`SQLite\`\n**Komut:** \`100+\``).setFooter({ text: FOOTER });
                 await message.reply({ embeds: [embed] });
                 return;
             }
@@ -1453,7 +1556,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
                 const checkTimeout = () => { if (Date.now() - startTime > TIMEOUT_MS) throw new Error('Tarama süresi aşıldı (60s)'); };
 
-                // Gerçek tarayıcı header'ları (Cloudflare UA/header tabanlı engellemeyi aşmak için)
                 const TARAYICI_HEADERS = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -1475,13 +1577,11 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const hostname = parsedUrl.hostname;
                     const domain = hostname.replace(/^www\./, '');
 
-                    // Ana sayfa isteği (gerçek tarayıcı header'ları ile)
                     await sleep(200); checkTimeout();
                     const response = await safeFetch(url, { method: 'GET', headers: TARAYICI_HEADERS }, 15000);
                     const sure = Date.now() - startTime;
                     const html = await response.text();
 
-                    // ==================== CLOUDFLARE / 403 ERKEN TESPİT ====================
                     const cfChallenge = (
                         response.status === 403 ||
                         response.status === 503 ||
@@ -1489,20 +1589,13 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         html.toLowerCase().includes('cf-challenge') ||
                         html.toLowerCase().includes('turnstile')
                     );
+                    const cfEngel = cfChallenge;
 
-                    let cfEngel = false;
-                    if (cfChallenge) {
-                        // Ana sayfa engelliyse API/alt sayfa taraması yapma
-                        cfEngel = true;
-                    }
-
-                    // ==================== TEMEL BİLGİLER ====================
                     const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
                     const title = titleMatch ? titleMatch[1].trim().slice(0, 100) : 'Yok';
                     const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
                     const metaDesc = descMatch ? descMatch[1].trim().slice(0, 200) : 'Yok';
 
-                    // ==================== TEKNOLOJİ TESPİTİ ====================
                     const teknolojiler = [];
                     const generatorMatch = html.match(/<meta[^>]*name=["']generator["'][^>]*content=["']([^"']*)["']/i);
                     if (generatorMatch) teknolojiler.push(`Generator: ${generatorMatch[1]}`);
@@ -1519,7 +1612,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const cdnMatch = response.headers.get('server')?.match(/(cloudflare|cloudfront|akamai|fastly|nginx|apache)/i);
                     if (cdnMatch) teknolojiler.push(`Server: ${cdnMatch[1]}`);
 
-                    // ==================== GÜVENLİK HEADER'LARI ====================
                     const guvenlik = {
                         hsts: response.headers.get('strict-transport-security') ? 'Var' : 'Yok',
                         csp: response.headers.get('content-security-policy') ? 'Var' : 'Yok',
@@ -1529,7 +1621,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         referrer: response.headers.get('referrer-policy') ? 'Var' : 'Yok'
                     };
 
-                    // ==================== ROBOTS & SITEMAP ====================
                     let robotsInfo = 'Yok';
                     let sitemapUrls = [];
                     if (!cfEngel) {
@@ -1560,7 +1651,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         robotsInfo = 'Cloudflare engeli nedeniyle atlandı';
                     }
 
-                    // ==================== ALT SAYFA HARİTALAMA ====================
                     const altSayfalar = new Set();
                     if (!cfEngel) {
                         const hrefRegex = /<a[^>]+href=["']([^"']+)["']/gi;
@@ -1585,7 +1675,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         sitemapUrls.forEach(u => altSayfalar.add(u));
                     }
 
-                    // ==================== API KEŞFİ ====================
                     const apiEndpoints = new Set();
                     if (!cfEngel) {
                         const apiPaths = ['/api', '/api/v1', '/api/v2', '/graphql', '/rest', '/wp-json', '/.well-known/openid-configuration', '/api/health', '/api/status'];
@@ -1596,7 +1685,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                                 if ([200, 401, 403].includes(apiRes.status)) apiEndpoints.add(`${path} (${apiRes.status})`);
                             } catch (e) {}
                         }
-                        // JS içinden API çağrılarını çıkar
                         const jsApiRegex = /(fetch|axios\.(get|post|put|delete)|\.open)\s*\(\s*["']([^"']+)["']/gi;
                         let jsMatch;
                         while ((jsMatch = jsApiRegex.exec(html)) !== null) {
@@ -1616,7 +1704,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         }
                     }
 
-                    // ==================== SUBDOMAIN KEŞFİ (--full) ====================
                     let subdomains = [];
                     if (isFull && !cfEngel) {
                         try {
@@ -1643,11 +1730,9 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         } catch (e) { console.error('crt.sh hatası:', e.message); }
                     }
 
-                    // ==================== RAPOR ====================
-                    let rapor = `MELEZYA SITE TARAMA RAPORU\n=====================================================\nURL: ${url}\nDomain: ${domain}\nTarih: ${new Date().toLocaleString('tr-TR')}\nMod: ${isFull ? 'Detaylı (--full)' : 'Standart'}\nDurum: ${response.status} ${response.statusText}\nYanıt Süresi: ${sure}ms\n`;
+                    let rapor = `CEZAİR SITE TARAMA RAPORU\n=====================================================\nURL: ${url}\nDomain: ${domain}\nTarih: ${new Date().toLocaleString('tr-TR')}\nMod: ${isFull ? 'Detaylı (--full)' : 'Standart'}\nDurum: ${response.status} ${response.statusText}\nYanıt Süresi: ${sure}ms\n`;
                     if (cfEngel) rapor += `UYARI: Cloudflare/bot koruması tespit edildi. Derin tarama (API, alt sayfa, subdomain) atlandı.\n`;
                     rapor += `\n`;
-
                     rapor += `[1] TEMEL BİLGİLER\nSayfa Başlığı: ${title}\nMeta Açıklama: ${metaDesc}\nSunucu: ${response.headers.get('server') || 'Bilinmiyor'}\nContent-Type: ${response.headers.get('content-type') || 'Bilinmiyor'}\n\n`;
                     rapor += `[2] TEKNOLOJİLER (${teknolojiler.length})\n` + (teknolojiler.length > 0 ? teknolojiler.map(t => `- ${t}`).join('\n') : '- Tespit edilemedi') + `\n\n`;
                     rapor += `[3] GÜVENLİK HEADER'LARI\nHSTS: ${guvenlik.hsts} | CSP: ${guvenlik.csp} | X-Frame: ${guvenlik.xframe}\nX-Content: ${guvenlik.xcontent} | X-XSS: ${guvenlik.xxss} | Referrer: ${guvenlik.referrer}\n\n`;
@@ -1658,7 +1743,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         rapor += `[7] SUBDOMAIN'LER (${subdomains.length})\n` + (subdomains.length > 0 ? subdomains.map(s => `- ${s.sub} (${s.ip})`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
                     }
                     rapor += `[8] SITEMAP URL'LERİ (${sitemapUrls.length})\n` + (sitemapUrls.length > 0 ? sitemapUrls.slice(0, 100).map(u => `- ${u}`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
-                    rapor += `=====================================================\nMELEZYA Bot ${EMOJI.trbayrak}\n`;
+                    rapor += `=====================================================\nCEZAİR Bot ${EMOJI.trbayrak}\n`;
 
                     const attachment = new AttachmentBuilder(Buffer.from(rapor, 'utf-8'), { name: `tarama-${domain}-${Date.now()}.txt` });
                     const kritik = [];
@@ -1678,7 +1763,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                             { name: 'Teknoloji', value: `${teknolojiler.length}`, inline: true },
                             { name: 'Kritik Bulgular', value: kritik.length > 0 ? kritik.join('\n').slice(0, 500) : 'Yok', inline: false }
                         )
-                        .setFooter({ text: `MELEZYA ${EMOJI.trbayrak}` });
+                        .setFooter({ text: `CEZAİR ${EMOJI.trbayrak}` });
 
                     await yukleniyorMsg.edit({ content: null, embeds: [embed], files: [attachment] });
                 } catch (e) {
@@ -1752,118 +1837,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 return message.reply(`${EMOJI.carpi} Bilinmeyen komut. \`${PREFIX}cipher\` yaz.`);
             }
 
-                        // ==================== TAKİP URL ====================
-            if (command === 'takipurl') {
-                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
-                const input = args[0];
-                if (!input) return message.reply(`${EMOJI.carpi} Bir davet kodu veya URL belirt! Örnek: \`${PREFIX}takipurl capulcu\``);
-
-                let code = input
-                    .replace(/^https?:\/\//i, '')
-                    .replace(/^(www\.)?(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\//i, '')
-                    .replace(/\/$/, '');
-
-                if (!code || code.length < 2) return message.reply(`${EMOJI.carpi} Geçersiz davet kodu.`);
-
-                const davetUrl = `https://discord.gg/${code}`;
-                const kontrolUrl = `https://discord.com/api/v10/invites/${code}`;
-
-                // İlk kontrol: davet geçerli mi?
-                try {
-                    const ilkKontrol = await safeFetch(kontrolUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 10000);
-                    if (!ilkKontrol.ok) {
-                        return message.reply(`${EMOJI.carpi} **${davetUrl}** geçerli bir davet değil veya süresi dolmuş. (HTTP ${ilkKontrol.status})`);
-                    }
-                    const davetData = await ilkKontrol.json();
-                    const sunucuAdi = davetData.guild?.name || 'Bilinmiyor';
-                    const uyeSayisi = davetData.approximate_member_count || '?';
-
-                    await message.reply(`${EMOJI.tik} **${davetUrl}** takibe alındı.\nSunucu: **${sunucuAdi}** (${uyeSayisi} üye)\nKontrol aralığı: 5 dakika`);
-
-                    // Takip listesine ekle (in-memory, bot yeniden başlarsa sıfırlanır)
-                    if (!global.takipListesi) global.takipListesi = new Map();
-                    if (global.takipListesi.has(code)) {
-                        return message.reply(`${EMOJI.bilgi} **${davetUrl}** zaten takip listesinde.`);
-                    }
-
-                    global.takipListesi.set(code, {
-                        url: davetUrl,
-                        kanalId: message.channel.id,
-                        userId: message.author.id,
-                        baslangic: Date.now(),
-                        sonDurum: 'aktif'
-                    });
-
-                    // Interval zaten kuruluysa tekrar kurma
-                    if (!global.takipInterval) {
-                        global.takipInterval = setInterval(async () => {
-                            if (!global.takipListesi || global.takipListesi.size === 0) return;
-                            for (const [c, data] of global.takipListesi) {
-                                try {
-                                    const res = await fetch(`https://discord.com/api/v10/invites/${c}`, {
-                                        headers: { 'User-Agent': 'Mozilla/5.0' },
-                                        signal: AbortSignal.timeout(10000)
-                                    });
-                                    if (res.status === 404 || !res.ok) {
-                                        if (data.sonDurum === 'aktif') {
-                                            data.sonDurum = 'bos';
-                                            const user = await client.users.fetch(data.userId).catch(() => null);
-                                            const kanal = await client.channels.fetch(data.kanalId).catch(() => null);
-                                            const mesaj = `URL BOŞALDI!!! ${data.url}`;
-                                            if (user) {
-                                                try { await user.send(mesaj); } catch (e) {}
-                                            }
-                                            if (kanal) {
-                                                try { await kanal.send(`<@${data.userId}> ${mesaj}`); } catch (e) {}
-                                            }
-                                        }
-                                    } else {
-                                        if (data.sonDurum === 'bos') {
-                                            data.sonDurum = 'aktif';
-                                            const user = await client.users.fetch(data.userId).catch(() => null);
-                                            if (user) {
-                                                try { await user.send(`URL TEKRAR AKTİF: ${data.url}`); } catch (e) {}
-                                            }
-                                        }
-                                    }
-                                } catch (e) {}
-                            }
-                        }, 5 * 60 * 1000);
-                    }
-                } catch (e) {
-                    await message.reply(`${EMOJI.carpi} Davet kontrol edilemedi: \`${e.message}\``);
-                }
-                return;
-            }
-
-            if (command === 'takip-liste') {
-                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
-                if (!global.takipListesi || global.takipListesi.size === 0) return message.reply(`${EMOJI.bilgi} Takip listesi boş.`);
-                let desc = '';
-                let i = 1;
-                for (const [code, data] of global.takipListesi) {
-                    desc += `**${i}.** ${data.url} — Durum: \`${data.sonDurum}\`\n`;
-                    i++;
-                }
-                const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.bilgi} TAKİP LİSTESİ`).setDescription(desc).setFooter({ text: FOOTER });
-                await message.reply({ embeds: [embed] });
-                return;
-            }
-
-            if (command === 'takip-sil') {
-                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
-                const input = args[0];
-                if (!input) return message.reply(`${EMOJI.carpi} Silinecek davet kodunu belirt!`);
-                const code = input.replace(/^https?:\/\/(www\.)?(discord\.gg|discord\.com\/invite)\//i, '').replace(/\/$/, '');
-                if (global.takipListesi && global.takipListesi.has(code)) {
-                    global.takipListesi.delete(code);
-                    await message.reply(`${EMOJI.tik} **${code}** takip listesinden çıkarıldı.`);
-                } else {
-                    await message.reply(`${EMOJI.carpi} **${code}** takip listesinde yok.`);
-                }
-                return;
-            }
-
             // ==================== YARDIM ====================
             if (command === 'yardim' || command === 'yardım' || command === 'help') {
                 if (args[0]) {
@@ -1906,6 +1879,9 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         'log-ara': { aciklama: 'Kullanıcının mesajlarında kelime arar.', kullanim: `${PREFIX}log-ara @kullanıcı <kelime>` },
                         'log-istatistik': { aciklama: 'Veritabanı tablo istatistiklerini gösterir.', kullanim: `${PREFIX}log-istatistik` },
                         'yedek-al': { aciklama: 'Veritabanı yedeği alır (sadece bot sahibi).', kullanim: `${PREFIX}yedek-al` },
+                        'takipurl': { aciklama: 'Bir Discord davet linkini 7/24 takibe alır, boşalınca DM atar.', kullanim: `${PREFIX}takipurl <kod/url>` },
+                        'takip-liste': { aciklama: 'Takipteki davet linklerini listeler.', kullanim: `${PREFIX}takip-liste` },
+                        'takip-sil': { aciklama: 'Takip listesinden davet kodu çıkarır.', kullanim: `${PREFIX}takip-sil <kod>` },
                         'otomod-durum': { aciklama: 'Otomatik moderasyon durumunu gösterir.', kullanim: `${PREFIX}otomod-durum` },
                         'otomod-kelime-ekle': { aciklama: 'Küfür listesine kelime ekler.', kullanim: `${PREFIX}otomod-kelime-ekle <kelime>` },
                         'otomod-kelime-sil': { aciklama: 'Küfür listesinden kelime siler.', kullanim: `${PREFIX}otomod-kelime-sil <kelime>` },
@@ -1932,7 +1908,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 }
                 const embed = new EmbedBuilder()
                     .setColor(0xE30A17)
-                    .setTitle(`${EMOJI.kale} MELEZYA BOT KOMUTLARI ${EMOJI.trbayrak}`)
+                    .setTitle(`${EMOJI.kale} CEZAİR BOT KOMUTLARI ${EMOJI.trbayrak}`)
                     .setDescription(`Merhaba **${message.author.username}**! Toplam **100+ komut** ile hizmetindeyim.\n\n**Detaylı yardım için:** \`${PREFIX}yardim <komut>\``)
                     .addFields(
                         { name: `${EMOJI.kalkan} MODERASYON (ADMIN)`, value: '`temizle` `kick` `ban` `unban` `ban-list` `uyar` `uyarılar` `uyarı-sil` `uyarı-sıfırla` `sustur` `susturma-kaldır` `slowmode` `kanal-kilit` `kanal-aç`', inline: false },
@@ -1943,7 +1919,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         { name: `${EMOJI.github} API & OYUN`, value: '`github` `roblox` `minecraft` `deprem` `ülke` `nasa` `spotify` `steam` `twitch` `rawg` `pokemon` `mtg`', inline: false },
                         { name: `${EMOJI.member} BİLGİ`, value: '`ping` `zaman` `kullanıcı` `sunucu` `avatar` `banner` `bot` `aktif` `profil` `günlük-istatistik`', inline: false },
                         { name: `${EMOJI.encode} CIPHER & ARAÇLAR`, value: '`cipher encode base64 <metin>` `cipher decode base64 <metin>` `cipher hash <metin>` `cipher timestamp` `tarama <url> [--full]`', inline: false },
-                        { name: `${EMOJI.ayarlar} YÖNETİM (ADMIN)`, value: '`yedek` `yedek-al` `log-ara` `log-istatistik` `otomod-durum` `otomod-aç` `otomod-kapa` `otomod-kelime-ekle` `otomod-kelime-sil` `otomod-kelime-liste` `otomod-izinli-kanal-ekle` `otomod-izinli-kanal-sil` `otomod-izinli-kanal-liste`', inline: false }
+                        { name: `${EMOJI.ayarlar} YÖNETİM (ADMIN)`, value: '`yedek` `yedek-al` `log-ara` `log-istatistik` `takipurl` `takip-liste` `takip-sil` `otomod-durum` `otomod-aç` `otomod-kapa` `otomod-kelime-ekle` `otomod-kelime-sil` `otomod-kelime-liste` `otomod-izinli-kanal-ekle` `otomod-izinli-kanal-sil` `otomod-izinli-kanal-liste`', inline: false }
                     )
                     .setFooter({ text: `${FOOTER} • Toplam 100+ komut • İyi eğlenceler!` })
                     .setTimestamp();
