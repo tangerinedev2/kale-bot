@@ -66,6 +66,14 @@ function getSetting(key) {
     return row ? row.value : null;
 }
 
+function getAllSettings() {
+    const database = getDB();
+    const rows = database.prepare('SELECT key, value FROM settings').all();
+    const obj = {};
+    rows.forEach(row => { obj[row.key] = row.value; });
+    return obj;
+}
+
 // ============================================================
 // APO SAYAÇ
 // ============================================================
