@@ -638,6 +638,7 @@ module.exports = {
     loadSettings,
     setSetting,
     getSetting,
+    getAllSettings,
     getApoCount,
     incrementApoCount,
     ensureUser,
@@ -696,5 +697,5 @@ module.exports = {
     getTopVoiceUsers,
     getTotalUsers,
     getTotalMessages,
-    getLogStats
+    getLogStats,
 };
