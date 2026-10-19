@@ -1442,7 +1442,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 return;
             }
 
-            // ==================== TARAMA (GENİŞLETİLMİŞ) ====================
+            // ==================== TARAMA (GENİŞLETİLMİŞ + CLOUDFLARE UYUMLU) ====================
             if (command === 'tarama' || command === 'tara') {
                 let url = args[0];
                 if (!url) return message.reply(`${EMOJI.carpi} Bir URL belirt! Örnek: \`${PREFIX}tarama google.com\``);
@@ -1453,6 +1453,21 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
                 const checkTimeout = () => { if (Date.now() - startTime > TIMEOUT_MS) throw new Error('Tarama süresi aşıldı (60s)'); };
 
+                // Gerçek tarayıcı header'ları (Cloudflare UA/header tabanlı engellemeyi aşmak için)
+                const TARAYICI_HEADERS = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Sec-Fetch-User': '?1',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Cache-Control': 'max-age=0',
+                    'Connection': 'keep-alive'
+                };
+
                 const yukleniyorMsg = await message.channel.send(`${EMOJI.yukleniyor} **Site taranıyor...** \`${url}\` ${isFull ? '(detaylı mod)' : ''}`);
 
                 try {
@@ -1460,16 +1475,34 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const hostname = parsedUrl.hostname;
                     const domain = hostname.replace(/^www\./, '');
 
+                    // Ana sayfa isteği (gerçek tarayıcı header'ları ile)
                     await sleep(200); checkTimeout();
-                    const response = await safeFetch(url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 (MELEZYA Bot Scanner)' } }, 15000);
+                    const response = await safeFetch(url, { method: 'GET', headers: TARAYICI_HEADERS }, 15000);
                     const sure = Date.now() - startTime;
                     const html = await response.text();
 
+                    // ==================== CLOUDFLARE / 403 ERKEN TESPİT ====================
+                    const cfChallenge = (
+                        response.status === 403 ||
+                        response.status === 503 ||
+                        (html.toLowerCase().includes('just a moment') && html.toLowerCase().includes('cloudflare')) ||
+                        html.toLowerCase().includes('cf-challenge') ||
+                        html.toLowerCase().includes('turnstile')
+                    );
+
+                    let cfEngel = false;
+                    if (cfChallenge) {
+                        // Ana sayfa engelliyse API/alt sayfa taraması yapma
+                        cfEngel = true;
+                    }
+
+                    // ==================== TEMEL BİLGİLER ====================
                     const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
                     const title = titleMatch ? titleMatch[1].trim().slice(0, 100) : 'Yok';
                     const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
                     const metaDesc = descMatch ? descMatch[1].trim().slice(0, 200) : 'Yok';
 
+                    // ==================== TEKNOLOJİ TESPİTİ ====================
                     const teknolojiler = [];
                     const generatorMatch = html.match(/<meta[^>]*name=["']generator["'][^>]*content=["']([^"']*)["']/i);
                     if (generatorMatch) teknolojiler.push(`Generator: ${generatorMatch[1]}`);
@@ -1486,6 +1519,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     const cdnMatch = response.headers.get('server')?.match(/(cloudflare|cloudfront|akamai|fastly|nginx|apache)/i);
                     if (cdnMatch) teknolojiler.push(`Server: ${cdnMatch[1]}`);
 
+                    // ==================== GÜVENLİK HEADER'LARI ====================
                     const guvenlik = {
                         hsts: response.headers.get('strict-transport-security') ? 'Var' : 'Yok',
                         csp: response.headers.get('content-security-policy') ? 'Var' : 'Yok',
@@ -1495,86 +1529,99 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         referrer: response.headers.get('referrer-policy') ? 'Var' : 'Yok'
                     };
 
+                    // ==================== ROBOTS & SITEMAP ====================
                     let robotsInfo = 'Yok';
                     let sitemapUrls = [];
-                    try {
-                        await sleep(200); checkTimeout();
-                        const robotsRes = await safeFetch(new URL('/robots.txt', url).href, {}, 5000);
-                        if (robotsRes.ok) {
-                            const robotsTxt = await robotsRes.text();
-                            robotsInfo = `Var (${robotsTxt.split('\n').length} satır)`;
-                            const sitemapLines = robotsTxt.match(/Sitemap:\s*(.+)/gi);
-                            if (sitemapLines) {
-                                for (const line of sitemapLines) {
-                                    const smUrl = line.replace(/Sitemap:\s*/i, '').trim();
-                                    try {
-                                        await sleep(200); checkTimeout();
-                                        const smRes = await safeFetch(smUrl, {}, 5000);
-                                        if (smRes.ok) {
-                                            const smTxt = await smRes.text();
-                                            const urls = smTxt.match(/<loc>([^<]+)<\/loc>/g);
-                                            if (urls) sitemapUrls.push(...urls.map(u => u.replace(/<\/?loc>/g, '')));
-                                        }
-                                    } catch (e) {}
+                    if (!cfEngel) {
+                        try {
+                            await sleep(200); checkTimeout();
+                            const robotsRes = await safeFetch(new URL('/robots.txt', url).href, { headers: TARAYICI_HEADERS }, 5000);
+                            if (robotsRes.ok) {
+                                const robotsTxt = await robotsRes.text();
+                                robotsInfo = `Var (${robotsTxt.split('\n').length} satır)`;
+                                const sitemapLines = robotsTxt.match(/Sitemap:\s*(.+)/gi);
+                                if (sitemapLines) {
+                                    for (const line of sitemapLines) {
+                                        const smUrl = line.replace(/Sitemap:\s*/i, '').trim();
+                                        try {
+                                            await sleep(200); checkTimeout();
+                                            const smRes = await safeFetch(smUrl, { headers: TARAYICI_HEADERS }, 5000);
+                                            if (smRes.ok) {
+                                                const smTxt = await smRes.text();
+                                                const urls = smTxt.match(/<loc>([^<]+)<\/loc>/g);
+                                                if (urls) sitemapUrls.push(...urls.map(u => u.replace(/<\/?loc>/g, '')));
+                                            }
+                                        } catch (e) {}
+                                    }
                                 }
                             }
-                        }
-                    } catch (e) {}
+                        } catch (e) {}
+                    } else {
+                        robotsInfo = 'Cloudflare engeli nedeniyle atlandı';
+                    }
 
+                    // ==================== ALT SAYFA HARİTALAMA ====================
                     const altSayfalar = new Set();
-                    const hrefRegex = /<a[^>]+href=["']([^"']+)["']/gi;
-                    let hrefMatch;
-                    while ((hrefMatch = hrefRegex.exec(html)) !== null) {
-                        try {
-                            const link = new URL(hrefMatch[1], url);
-                            if (link.hostname === hostname || link.hostname === domain) altSayfalar.add(link.href);
-                        } catch (e) {}
+                    if (!cfEngel) {
+                        const hrefRegex = /<a[^>]+href=["']([^"']+)["']/gi;
+                        let hrefMatch;
+                        while ((hrefMatch = hrefRegex.exec(html)) !== null) {
+                            try {
+                                const link = new URL(hrefMatch[1], url);
+                                if (link.hostname === hostname || link.hostname === domain) altSayfalar.add(link.href);
+                            } catch (e) {}
+                        }
+                        if (sitemapUrls.length === 0) {
+                            try {
+                                await sleep(200); checkTimeout();
+                                const sitemapRes = await safeFetch(new URL('/sitemap.xml', url).href, { headers: TARAYICI_HEADERS }, 5000);
+                                if (sitemapRes.ok) {
+                                    const smTxt = await sitemapRes.text();
+                                    const urls = smTxt.match(/<loc>([^<]+)<\/loc>/g);
+                                    if (urls) sitemapUrls = urls.map(u => u.replace(/<\/?loc>/g, ''));
+                                }
+                            } catch (e) {}
+                        }
+                        sitemapUrls.forEach(u => altSayfalar.add(u));
                     }
-                    if (sitemapUrls.length === 0) {
-                        try {
-                            await sleep(200); checkTimeout();
-                            const sitemapRes = await safeFetch(new URL('/sitemap.xml', url).href, {}, 5000);
-                            if (sitemapRes.ok) {
-                                const smTxt = await sitemapRes.text();
-                                const urls = smTxt.match(/<loc>([^<]+)<\/loc>/g);
-                                if (urls) sitemapUrls = urls.map(u => u.replace(/<\/?loc>/g, ''));
-                            }
-                        } catch (e) {}
-                    }
-                    sitemapUrls.forEach(u => altSayfalar.add(u));
 
+                    // ==================== API KEŞFİ ====================
                     const apiEndpoints = new Set();
-                    const apiPaths = ['/api', '/api/v1', '/api/v2', '/graphql', '/rest', '/wp-json', '/.well-known/openid-configuration', '/api/health', '/api/status'];
-                    for (const path of apiPaths) {
-                        await sleep(200); checkTimeout();
-                        try {
-                            const apiRes = await safeFetch(new URL(path, url).href, { method: 'HEAD', headers: { 'User-Agent': 'Mozilla/5.0' } }, 5000);
-                            if ([200, 401, 403].includes(apiRes.status)) apiEndpoints.add(`${path} (${apiRes.status})`);
-                        } catch (e) {}
-                    }
-                    const jsApiRegex = /(fetch|axios\.(get|post|put|delete)|\.open)\s*\(\s*["']([^"']+)["']/gi;
-                    let jsMatch;
-                    while ((jsMatch = jsApiRegex.exec(html)) !== null) {
-                        const endpoint = jsMatch[3];
-                        if (endpoint.startsWith('/') || endpoint.startsWith('http')) apiEndpoints.add(endpoint);
-                    }
-                    const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
-                    let scriptMatch;
-                    while ((scriptMatch = scriptRegex.exec(html)) !== null) {
-                        const scriptContent = scriptMatch[1];
-                        const inlineRegex = /(fetch|axios\.(get|post|put|delete)|\.open)\s*\(\s*["']([^"']+)["']/gi;
-                        let inlineMatch;
-                        while ((inlineMatch = inlineRegex.exec(scriptContent)) !== null) {
-                            const endpoint = inlineMatch[3];
+                    if (!cfEngel) {
+                        const apiPaths = ['/api', '/api/v1', '/api/v2', '/graphql', '/rest', '/wp-json', '/.well-known/openid-configuration', '/api/health', '/api/status'];
+                        for (const path of apiPaths) {
+                            await sleep(200); checkTimeout();
+                            try {
+                                const apiRes = await safeFetch(new URL(path, url).href, { method: 'HEAD', headers: TARAYICI_HEADERS }, 5000);
+                                if ([200, 401, 403].includes(apiRes.status)) apiEndpoints.add(`${path} (${apiRes.status})`);
+                            } catch (e) {}
+                        }
+                        // JS içinden API çağrılarını çıkar
+                        const jsApiRegex = /(fetch|axios\.(get|post|put|delete)|\.open)\s*\(\s*["']([^"']+)["']/gi;
+                        let jsMatch;
+                        while ((jsMatch = jsApiRegex.exec(html)) !== null) {
+                            const endpoint = jsMatch[3];
                             if (endpoint.startsWith('/') || endpoint.startsWith('http')) apiEndpoints.add(endpoint);
                         }
+                        const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+                        let scriptMatch;
+                        while ((scriptMatch = scriptRegex.exec(html)) !== null) {
+                            const scriptContent = scriptMatch[1];
+                            const inlineRegex = /(fetch|axios\.(get|post|put|delete)|\.open)\s*\(\s*["']([^"']+)["']/gi;
+                            let inlineMatch;
+                            while ((inlineMatch = inlineRegex.exec(scriptContent)) !== null) {
+                                const endpoint = inlineMatch[3];
+                                if (endpoint.startsWith('/') || endpoint.startsWith('http')) apiEndpoints.add(endpoint);
+                            }
+                        }
                     }
 
+                    // ==================== SUBDOMAIN KEŞFİ (--full) ====================
                     let subdomains = [];
-                    if (isFull) {
+                    if (isFull && !cfEngel) {
                         try {
                             await sleep(200); checkTimeout();
-                            const crtRes = await safeFetch(`https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 20000);
+                            const crtRes = await safeFetch(`https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`, { headers: TARAYICI_HEADERS }, 20000);
                             if (crtRes.ok) {
                                 const crtData = await crtRes.json();
                                 const subSet = new Set();
@@ -1596,33 +1643,38 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         } catch (e) { console.error('crt.sh hatası:', e.message); }
                     }
 
-                    let rapor = `MELEZYA SITE TARAMA RAPORU\n=====================================================\nURL: ${url}\nDomain: ${domain}\nTarih: ${new Date().toLocaleString('tr-TR')}\nMod: ${isFull ? 'Detaylı (--full)' : 'Standart'}\nDurum: ${response.status} ${response.statusText}\nYanıt Süresi: ${sure}ms\n\n`;
+                    // ==================== RAPOR ====================
+                    let rapor = `MELEZYA SITE TARAMA RAPORU\n=====================================================\nURL: ${url}\nDomain: ${domain}\nTarih: ${new Date().toLocaleString('tr-TR')}\nMod: ${isFull ? 'Detaylı (--full)' : 'Standart'}\nDurum: ${response.status} ${response.statusText}\nYanıt Süresi: ${sure}ms\n`;
+                    if (cfEngel) rapor += `UYARI: Cloudflare/bot koruması tespit edildi. Derin tarama (API, alt sayfa, subdomain) atlandı.\n`;
+                    rapor += `\n`;
+
                     rapor += `[1] TEMEL BİLGİLER\nSayfa Başlığı: ${title}\nMeta Açıklama: ${metaDesc}\nSunucu: ${response.headers.get('server') || 'Bilinmiyor'}\nContent-Type: ${response.headers.get('content-type') || 'Bilinmiyor'}\n\n`;
                     rapor += `[2] TEKNOLOJİLER (${teknolojiler.length})\n` + (teknolojiler.length > 0 ? teknolojiler.map(t => `- ${t}`).join('\n') : '- Tespit edilemedi') + `\n\n`;
                     rapor += `[3] GÜVENLİK HEADER'LARI\nHSTS: ${guvenlik.hsts} | CSP: ${guvenlik.csp} | X-Frame: ${guvenlik.xframe}\nX-Content: ${guvenlik.xcontent} | X-XSS: ${guvenlik.xxss} | Referrer: ${guvenlik.referrer}\n\n`;
                     rapor += `[4] ROBOTS.TXT: ${robotsInfo}\n\n`;
-                    rapor += `[5] ALT SAYFALAR (${altSayfalar.size})\n` + (altSayfalar.size > 0 ? Array.from(altSayfalar).slice(0, 100).map(u => `- ${u}`).join('\n') : '- Bulunamadı') + `\n\n`;
-                    rapor += `[6] API ENDPOINT'LERİ (${apiEndpoints.size})\n` + (apiEndpoints.size > 0 ? Array.from(apiEndpoints).slice(0, 100).map(a => `- ${a}`).join('\n') : '- Bulunamadı') + `\n\n`;
+                    rapor += `[5] ALT SAYFALAR (${altSayfalar.size})\n` + (altSayfalar.size > 0 ? Array.from(altSayfalar).slice(0, 100).map(u => `- ${u}`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
+                    rapor += `[6] API ENDPOINT'LERİ (${apiEndpoints.size})\n` + (apiEndpoints.size > 0 ? Array.from(apiEndpoints).slice(0, 100).map(a => `- ${a}`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
                     if (isFull) {
-                        rapor += `[7] SUBDOMAIN'LER (${subdomains.length})\n` + (subdomains.length > 0 ? subdomains.map(s => `- ${s.sub} (${s.ip})`).join('\n') : '- Bulunamadı') + `\n\n`;
+                        rapor += `[7] SUBDOMAIN'LER (${subdomains.length})\n` + (subdomains.length > 0 ? subdomains.map(s => `- ${s.sub} (${s.ip})`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
                     }
-                    rapor += `[8] SITEMAP URL'LERİ (${sitemapUrls.length})\n` + (sitemapUrls.length > 0 ? sitemapUrls.slice(0, 100).map(u => `- ${u}`).join('\n') : '- Bulunamadı') + `\n\n`;
+                    rapor += `[8] SITEMAP URL'LERİ (${sitemapUrls.length})\n` + (sitemapUrls.length > 0 ? sitemapUrls.slice(0, 100).map(u => `- ${u}`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
                     rapor += `=====================================================\nMELEZYA Bot ${EMOJI.trbayrak}\n`;
 
                     const attachment = new AttachmentBuilder(Buffer.from(rapor, 'utf-8'), { name: `tarama-${domain}-${Date.now()}.txt` });
                     const kritik = [];
-                    if (guvenlik.csp === 'Yok') kritik.push('CSP header eksik');
-                    if (guvenlik.hsts === 'Yok') kritik.push('HSTS header eksik');
-                    if (apiEndpoints.size > 0) kritik.push(`${apiEndpoints.size} API endpoint açıkta`);
+                    if (cfEngel) kritik.push('Cloudflare/bot koruması aktif');
+                    if (!cfEngel && guvenlik.csp === 'Yok') kritik.push('CSP header eksik');
+                    if (!cfEngel && guvenlik.hsts === 'Yok') kritik.push('HSTS header eksik');
+                    if (!cfEngel && apiEndpoints.size > 0) kritik.push(`${apiEndpoints.size} API endpoint açıkta`);
 
                     const embed = new EmbedBuilder()
-                        .setColor(kritik.length > 0 ? 0xFFA500 : 0x00FF00)
+                        .setColor(cfEngel ? 0xFF6B00 : (kritik.length > 0 ? 0xFFA500 : 0x00FF00))
                         .setTitle(`Tarama Tamamlandı: ${domain}`)
-                        .setDescription(`**Mod:** ${isFull ? 'Detaylı' : 'Standart'}\n**Süre:** ${Date.now() - startTime}ms`)
+                        .setDescription(`**Mod:** ${isFull ? 'Detaylı' : 'Standart'}\n**Süre:** ${Date.now() - startTime}ms${cfEngel ? '\n**UYARI:** Cloudflare engeli tespit edildi, derin tarama sınırlı.' : ''}`)
                         .addFields(
-                            { name: 'Subdomain', value: `${isFull ? subdomains.length : 'N/A'}`, inline: true },
-                            { name: 'API', value: `${apiEndpoints.size}`, inline: true },
-                            { name: 'Alt Sayfa', value: `${altSayfalar.size}`, inline: true },
+                            { name: 'Subdomain', value: `${isFull ? (cfEngel ? 'N/A' : subdomains.length) : 'N/A'}`, inline: true },
+                            { name: 'API', value: `${cfEngel ? 'N/A' : apiEndpoints.size}`, inline: true },
+                            { name: 'Alt Sayfa', value: `${cfEngel ? 'N/A' : altSayfalar.size}`, inline: true },
                             { name: 'Teknoloji', value: `${teknolojiler.length}`, inline: true },
                             { name: 'Kritik Bulgular', value: kritik.length > 0 ? kritik.join('\n').slice(0, 500) : 'Yok', inline: false }
                         )
