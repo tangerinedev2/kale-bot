@@ -12,7 +12,7 @@ const ADMIN_ID = '1332226105221971988';
 const LOG_CHANNEL_ID = '1546327530267742420';
 const GOZALTINDA_ROLE_ID = '1547933029979398226';
 const SABIT_SES_KANALI_ID = '1546154071113728101';
-const AUTOMOD_WEBHOOK_NAME = 'Melezya Koruma Bot';
+const AUTOMOD_WEBHOOK_NAME = 'Cezaır Koruma Bot';
 
 const EMOJIS = {
     yesil: '<:yesil:1547954548876902460>',
@@ -24,7 +24,7 @@ const EMOJIS = {
     dogrulanmadi: '<:dogrulanmadi:1547954536034082896>',
     dogrulandi: '<:dogrulandi:1547954534201032774>',
     trbayrak: '<a:trbayrak:1547936258859475014>',
-    kale: '<:logo:1561439840351035434>'
+    kale: '<:logo:1561718950469832815>'
 };
 
 const GOZALTINDA_PATH = path.join(__dirname, 'gozaltinda.json');
@@ -90,17 +90,11 @@ const client = new Client({
     partials: [Partials.Channel, Partials.Message, Partials.GuildMember, Partials.User]
 });
 
-// =========================== OTOMATİK MODERASYON ===========================
 let automodWebhook = null;
 let kufurListesi = [];
 let izinliKanallar = [];
-let automodAyarlar = {};
-
-// Spam/flood takibi
 const spamTracker = new Map();
 const floodTracker = new Map();
-
-// Raid takibi
 const raidTracker = { katilimcilar: [], sonTemizlik: Date.now() };
 
 async function webhookOlustur(guild) {
@@ -110,7 +104,7 @@ async function webhookOlustur(guild) {
         const webhooks = await logChannel.fetchWebhooks();
         let wh = webhooks.find(w => w.name === AUTOMOD_WEBHOOK_NAME && w.owner?.id === client.user.id);
         if (!wh) {
-            wh = await logChannel.createWebhook({ name: AUTOMOD_WEBHOOK_NAME, reason: 'Melezya Koruma Bot otomatik moderasyon' });
+            wh = await logChannel.createWebhook({ name: AUTOMOD_WEBHOOK_NAME, reason: 'Cezaır Koruma Bot otomatik moderasyon' });
             console.log(`${EMOJIS.yesil} Otomatik moderasyon webhook'u oluşturuldu: ${wh.name}`);
         } else {
             console.log(`${EMOJIS.yesil} Otomatik moderasyon webhook'u hazır: ${wh.name}`);
@@ -180,132 +174,108 @@ async function otomatikModerasyon(message) {
     if (!message.guild || message.guild.id !== GUILD_ID) return;
     if (message.author.bot) return;
     if (message.member?.permissions.has(PermissionsBitField.Flags.Administrator)) return;
-
     if (db.getSetting('automod_enabled') !== 'true') return;
     if (db.automodKanalIzinliMi(message.channel.id)) return;
-
     const icerik = message.content || '';
     if (!icerik) return;
 
-    // 1. Küfür
     if (db.getSetting('automod_kufur') === 'true') {
         const bulunan = kufurVarMi(icerik);
         if (bulunan) {
             await message.delete().catch(() => {});
             db.addAutomodLog(message.author.id, message.channel.id, 'kufur', icerik.slice(0, 500), 'mesaj_silindi');
             await automodUyar(message.channel, new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle(`${EMOJIS.kalkan} KÜFÜR ENGELLENDİ`)
+                .setColor(0xFF0000).setTitle(`${EMOJIS.kalkan} KÜFÜR ENGELLENDİ`)
                 .setDescription(`**${message.author.tag}** küfür içeren bir mesaj gönderdi ve mesajı silindi.`)
                 .addFields(
                     { name: 'Kanal', value: `${message.channel}`, inline: true },
                     { name: 'Kelime', value: `\`${bulunan}\``, inline: true }
                 )
-                .setFooter({ text: `Melezya Koruma Bot ${EMOJIS.trbayrak}` })
-                .setTimestamp());
+                .setFooter({ text: `Cezaır Koruma Bot ${EMOJIS.trbayrak}` }).setTimestamp());
             return;
         }
     }
 
-    // 2. Link
     if (db.getSetting('automod_link') === 'true') {
         if (linkVarMi(icerik)) {
             await message.delete().catch(() => {});
             db.addAutomodLog(message.author.id, message.channel.id, 'link', icerik.slice(0, 500), 'mesaj_silindi');
             await automodUyar(message.channel, new EmbedBuilder()
-                .setColor(0xFF6B00)
-                .setTitle(`${EMOJIS.kalkan} LİNK ENGELLENDİ`)
+                .setColor(0xFF6B00).setTitle(`${EMOJIS.kalkan} LİNK ENGELLENDİ`)
                 .setDescription(`**${message.author.tag}** link içeren bir mesaj gönderdi ve mesajı silindi.`)
                 .addFields({ name: 'Kanal', value: `${message.channel}`, inline: true })
-                .setFooter({ text: `Melezya Koruma Bot ${EMOJIS.trbayrak}` })
-                .setTimestamp());
+                .setFooter({ text: `Cezaır Koruma Bot ${EMOJIS.trbayrak}` }).setTimestamp());
             return;
         }
     }
 
-    // 3. Caps lock
     if (db.getSetting('automod_caps') === 'true') {
         if (capsOrani(icerik) > 0.7) {
             await message.delete().catch(() => {});
             db.addAutomodLog(message.author.id, message.channel.id, 'caps', icerik.slice(0, 500), 'mesaj_silindi');
             await automodUyar(message.channel, new EmbedBuilder()
-                .setColor(0xFFD700)
-                .setTitle(`${EMOJIS.kalkan} BÜYÜK HARF ENGELLENDİ`)
+                .setColor(0xFFD700).setTitle(`${EMOJIS.kalkan} BÜYÜK HARF ENGELLENDİ`)
                 .setDescription(`**${message.author.tag}** aşırı büyük harf kullandı ve mesajı silindi.`)
                 .addFields({ name: 'Kanal', value: `${message.channel}`, inline: true })
-                .setFooter({ text: `Melezya Koruma Bot ${EMOJIS.trbayrak}` })
-                .setTimestamp());
+                .setFooter({ text: `Cezaır Koruma Bot ${EMOJIS.trbayrak}` }).setTimestamp());
             return;
         }
     }
 
-    // 4. Mention spam
     if (db.getSetting('automod_mention') === 'true') {
         if (message.mentions.users.size >= 5) {
             await message.delete().catch(() => {});
             db.addAutomodLog(message.author.id, message.channel.id, 'mention_spam', icerik.slice(0, 500), 'mesaj_silindi');
             await automodUyar(message.channel, new EmbedBuilder()
-                .setColor(0xFF6B00)
-                .setTitle(`${EMOJIS.kalkan} ETİKET SPAM'İ ENGELLENDİ`)
+                .setColor(0xFF6B00).setTitle(`${EMOJIS.kalkan} ETİKET SPAM'İ ENGELLENDİ`)
                 .setDescription(`**${message.author.tag}** çok fazla etiket kullandı ve mesajı silindi.`)
                 .addFields({ name: 'Etiket Sayısı', value: `\`${message.mentions.users.size}\``, inline: true })
-                .setFooter({ text: `Melezya Koruma Bot ${EMOJIS.trbayrak}` })
-                .setTimestamp());
+                .setFooter({ text: `Cezaır Koruma Bot ${EMOJIS.trbayrak}` }).setTimestamp());
             return;
         }
     }
 
-    // 5. Emoji spam
     if (db.getSetting('automod_emoji') === 'true') {
         if (emojiSayisi(icerik) >= 10) {
             await message.delete().catch(() => {});
             db.addAutomodLog(message.author.id, message.channel.id, 'emoji_spam', icerik.slice(0, 500), 'mesaj_silindi');
             await automodUyar(message.channel, new EmbedBuilder()
-                .setColor(0xFFD700)
-                .setTitle(`${EMOJIS.kalkan} EMOJİ SPAM'İ ENGELLENDİ`)
+                .setColor(0xFFD700).setTitle(`${EMOJIS.kalkan} EMOJİ SPAM'İ ENGELLENDİ`)
                 .setDescription(`**${message.author.tag}** çok fazla emoji kullandı ve mesajı silindi.`)
-                .setFooter({ text: `Melezya Koruma Bot ${EMOJIS.trbayrak}` })
-                .setTimestamp());
+                .setFooter({ text: `Cezaır Koruma Bot ${EMOJIS.trbayrak}` }).setTimestamp());
             return;
         }
     }
 
-    // 6. Spam (5 saniyede 5+ mesaj)
     if (db.getSetting('automod_spam') === 'true') {
         if (spamKontrol(message.author.id)) {
             try {
                 await message.member.timeout(5 * 60 * 1000, 'Spam koruması');
                 db.addAutomodLog(message.author.id, message.channel.id, 'spam', icerik.slice(0, 500), 'timeout_5dk');
                 await automodUyar(message.channel, new EmbedBuilder()
-                    .setColor(0xFF0000)
-                    .setTitle(`${EMOJIS.kalkan} SPAM ENGELLENDİ`)
+                    .setColor(0xFF0000).setTitle(`${EMOJIS.kalkan} SPAM ENGELLENDİ`)
                     .setDescription(`**${message.author.tag}** spam yaptığı için 5 dakika susturuldu.`)
-                    .setFooter({ text: `Melezya Koruma Bot ${EMOJIS.trbayrak}` })
-                    .setTimestamp());
+                    .setFooter({ text: `Cezaır Koruma Bot ${EMOJIS.trbayrak}` }).setTimestamp());
             } catch (e) {}
             return;
         }
     }
 
-    // 7. Flood (10 saniyede 10+ mesaj)
     if (db.getSetting('automod_flood') === 'true') {
         if (floodKontrol(message.author.id)) {
             try {
                 await message.member.timeout(10 * 60 * 1000, 'Flood koruması');
                 db.addAutomodLog(message.author.id, message.channel.id, 'flood', icerik.slice(0, 500), 'timeout_10dk');
                 await automodUyar(message.channel, new EmbedBuilder()
-                    .setColor(0xFF0000)
-                    .setTitle(`${EMOJIS.kalkan} FLOOD ENGELLENDİ`)
+                    .setColor(0xFF0000).setTitle(`${EMOJIS.kalkan} FLOOD ENGELLENDİ`)
                     .setDescription(`**${message.author.tag}** flood yaptığı için 10 dakika susturuldu.`)
-                    .setFooter({ text: `Melezya Koruma Bot ${EMOJIS.trbayrak}` })
-                    .setTimestamp());
+                    .setFooter({ text: `Cezaır Koruma Bot ${EMOJIS.trbayrak}` }).setTimestamp());
             } catch (e) {}
             return;
         }
     }
 }
 
-// =========================== SLASH KOMUTLARI ===========================
 const commands = [
     new SlashCommandBuilder().setName('gozaltindakiler').setDescription('Gözaltındaki üyeleri listeler (DM .log)'),
     new SlashCommandBuilder().setName('gozaltina-al').setDescription('Bir üyeyi gözaltına alır')
@@ -375,11 +345,9 @@ client.once('ready', async () => {
         console.log(`${EMOJIS.yesil} Slash komutları kaydedildi! (${commands.length} komut)`);
     } catch (e) { console.error('Komut kaydetme hatası:', e); }
 
-    // Webhook oluştur
     const guild = client.guilds.cache.get(GUILD_ID);
     if (guild) {
         automodWebhook = await webhookOlustur(guild);
-        // Küfür listesini ve izinli kanalları yükle
         kufurListesi = db.getAutomodKelimeler();
         izinliKanallar = db.getAutomodIzinliKanallar();
         console.log(`${EMOJIS.yesil} Otomatik mod hazır: ${kufurListesi.length} küfür, ${izinliKanallar.length} muaf kanal`);
@@ -410,27 +378,21 @@ client.once('ready', async () => {
     } catch (e) { console.error('Ses kanalına katılma hatası:', e); }
 });
 
-// =========================== MESAJ DİNLEYİCİ (OTOMATİK MOD) ===========================
 client.on('messageCreate', async (message) => {
     if (!message.guild || message.guild.id !== GUILD_ID) return;
     if (message.author.bot) return;
-
-    // Küfür listesi ve izinli kanalları her 30 saniyede bir yenile (DB değişmiş olabilir)
     if (Date.now() % 30000 < 1000) {
         kufurListesi = db.getAutomodKelimeler();
-        izinliKanallar = db.getAutomodIzinliKanallar();
+        izinliKanalar = db.getAutomodIzinliKanallar();
     }
-
     await otomatikModerasyon(message);
 });
 
-// =========================== RAID TAKİBİ ===========================
 client.on('guildMemberAdd', async (member) => {
     if (member.guild.id !== GUILD_ID) return;
     const simdi = Date.now();
     raidTracker.katilimcilar = raidTracker.katilimcilar.filter(t => simdi - t < 10000);
     raidTracker.katilimcilar.push(simdi);
-
     if (raidTracker.katilimcilar.length >= 5) {
         console.log(`${EMOJIS.kirmizi} RAID TESPİT EDİLDİ! ${raidTracker.katilimcilar.length} katılım (10 sn)`);
         try {
@@ -438,18 +400,15 @@ client.on('guildMemberAdd', async (member) => {
             const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
             if (logChannel) {
                 await logChannel.send({ embeds: [new EmbedBuilder()
-                    .setColor(0xFF0000)
-                    .setTitle(`${EMOJIS.kalkan} RAID TESPİT EDİLDİ`)
+                    .setColor(0xFF0000).setTitle(`${EMOJIS.kalkan} RAID TESPİT EDİLDİ`)
                     .setDescription(`10 saniyede **${raidTracker.katilimcilar.length}** üye katıldı. Sunucu yöneticileri harekete geçmeli.`)
-                    .setTimestamp()
-                    .setFooter({ text: `Melezya Koruma Bot ${EMOJIS.trbayrak}` })] });
+                    .setTimestamp().setFooter({ text: `Cezaır Koruma Bot ${EMOJIS.trbayrak}` })] });
             }
             db.addRaidEvent(raidTracker.katilimcilar.length, 'tespit');
         } catch (e) {}
     }
 });
 
-// =========================== SLASH KOMUT İŞLEYİCİ ===========================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     if (interaction.guildId !== GUILD_ID) return;
@@ -460,11 +419,10 @@ client.on('interactionCreate', async (interaction) => {
     }
     await interaction.deferReply({ ephemeral: true });
     try {
-        // ==================== GÖZALTINDAKİLER ====================
         if (commandName === 'gozaltindakiler') {
             const list = Object.values(gozaltinda);
             if (list.length === 0) return interaction.editReply({ content: `${EMOJIS.sari} Gözaltında kimse yok.` });
-            let content = `MELEZYA GÜVENLİK - GÖZALTINDAKİLER LİSTESİ\n\nToplam: ${list.length} kişi\n\n`;
+            let content = `CEZAİR GÜVENLİK - GÖZALTINDAKİLER LİSTESİ\n\nToplam: ${list.length} kişi\n\n`;
             for (const [i, data] of list.entries()) {
                 const u = await client.users.fetch(data.userId).catch(() => null);
                 content += `${i + 1}. ${u ? u.tag : 'Bilinmeyen'} (${data.userId})\n   Sebep: ${data.sebep}\n   Yetkili: ${data.yetkili}\n   Tarih: ${new Date(data.tarih).toLocaleString('tr-TR')}\n\n`;
@@ -474,7 +432,6 @@ client.on('interactionCreate', async (interaction) => {
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Liste DM'ine gönderildi!` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi! DM'in kapalı olabilir.` });
         }
-        // ==================== GÖZALTINA AL ====================
         else if (commandName === 'gozaltina-al') {
             const target = interaction.options.getUser('kisi');
             const sebep = interaction.options.getString('sebep') || 'Belirtilmedi';
@@ -494,11 +451,10 @@ client.on('interactionCreate', async (interaction) => {
                         { name: 'Kullanıcı', value: `${target} (${target.id})`, inline: true },
                         { name: 'Yetkili', value: `${user}`, inline: true },
                         { name: 'Sebep', value: sebep }
-                    ).setTimestamp().setFooter({ text: `MELEZYA Güvenlik ${EMOJIS.trbayrak}` });
+                    ).setTimestamp().setFooter({ text: `CEZAİR Güvenlik ${EMOJIS.trbayrak}` });
                 await logChannel.send({ embeds: [embed], flags: 4096 });
             }
         }
-        // ==================== GÖZALTINDAN ÇIKAR ====================
         else if (commandName === 'gozaltindan-cikar') {
             const target = interaction.options.getUser('kisi');
             const targetMember = await guild.members.fetch(target.id).catch(() => null);
@@ -516,13 +472,12 @@ client.on('interactionCreate', async (interaction) => {
                     .addFields(
                         { name: 'Kullanıcı', value: `${target} (${target.id})`, inline: true },
                         { name: 'Yetkili', value: `${user}`, inline: true }
-                    ).setTimestamp().setFooter({ text: `MELEZYA Güvenlik ${EMOJIS.trbayrak}` });
+                    ).setTimestamp().setFooter({ text: `CEZAİR Güvenlik ${EMOJIS.trbayrak}` });
                 await logChannel.send({ embeds: [embed], flags: 4096 });
             }
         }
-        // ==================== GÜVENLİK TARA ====================
         else if (commandName === 'guvenlik-tara') {
-            let content = `MELEZYA GÜVENLİK - TAM SUNUCU TARAMASI\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n`;
+            let content = `CEZAİR GÜVENLİK - TAM SUNUCU TARAMASI\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n`;
             content += `ROLLER (${guild.roles.cache.size})\n`;
             for (const [id, role] of guild.roles.cache.sort((a, b) => b.position - a.position)) {
                 const perms = role.permissions.toArray();
@@ -540,18 +495,17 @@ client.on('interactionCreate', async (interaction) => {
             content += `\nWEBHOOKLAR\n`;
             const webhooks = await guild.fetchWebhooks();
             for (const [id, wh] of webhooks) content += `${wh.name} (${id}) - Kanal: ${wh.channel?.name || '?'} - Sahip: ${wh.owner?.tag || '?'}\n`;
-            content += `\nDAVETLER (${(await guild.invites.fetch()).size})\n`;
             const invites = await guild.invites.fetch();
+            content += `\nDAVETLER (${invites.size})\n`;
             for (const [code, inv] of invites) content += `${code} - ${inv.uses} kullanım - ${inv.channel?.name || '?'} - ${inv.inviter?.tag || '?'}\n`;
             const attachment = createLogFile(content, `guvenlik-tarama-${Date.now()}.log`);
             const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} Güvenlik tarama raporu:`, attachment);
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Tarama raporu DM'ine gönderildi!` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== BOT DENETLE ====================
         else if (commandName === 'bot-denetle') {
             const bots = guild.members.cache.filter(m => m.user.bot);
-            let content = `MELEZYA GÜVENLİK - BOT DENETİMİ\nToplam: ${bots.size} bot\n\n`;
+            let content = `CEZAİR GÜVENLİK - BOT DENETİMİ\nToplam: ${bots.size} bot\n\n`;
             for (const [id, bot] of bots) {
                 const perms = bot.permissions.toArray();
                 content += `${bot.user.tag} (${id})\n   Katılma: ${bot.joinedAt?.toLocaleString('tr-TR') || '?'}\n   Roller: ${bot.roles.cache.map(r => r.name).join(', ') || 'Yok'}\n   Yetkiler: ${perms.join(', ') || 'Yok'}\n   Administrator: ${perms.includes('Administrator') ? 'EVET (RISKLI)' : 'Hayır'}\n\n`;
@@ -561,12 +515,11 @@ client.on('interactionCreate', async (interaction) => {
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Bot denetim raporu DM'ine gönderildi!` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== İZİN DENETLE ====================
         else if (commandName === 'izin-denetle') {
             const rol = interaction.options.getRole('rol');
             const kanal = interaction.options.getChannel('kanal');
             if (!rol && !kanal) return interaction.editReply({ content: `${EMOJIS.kirmizi} Bir rol veya kanal belirtmelisin!` });
-            let content = `MELEZYA GÜVENLİK - İZİN DENETİMİ\n\n`;
+            let content = `CEZAİR GÜVENLİK - İZİN DENETİMİ\n\n`;
             if (rol) {
                 content += `ROL: ${rol.name} (${rol.id})\nRenk: ${rol.hexColor}\nÜye: ${rol.members.size}\nYetkiler: ${rol.permissions.toArray().join(', ') || 'Yok'}\nKonum: ${rol.position}\nMentionable: ${rol.mentionable}\nHoist: ${rol.hoist}\n\n`;
             }
@@ -582,7 +535,6 @@ client.on('interactionCreate', async (interaction) => {
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} İzin denetim raporu DM'ine gönderildi!` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== ÜYE DENETLE ====================
         else if (commandName === 'uye-denetle') {
             const target = interaction.options.getUser('kisi');
             const targetMember = await guild.members.fetch(target.id).catch(() => null);
@@ -590,13 +542,12 @@ client.on('interactionCreate', async (interaction) => {
             const userData = db.getUser(target.id);
             const warns = db.getWarns(target.id);
             const isCustody = db.isInCustody(target.id);
-            let content = `MELEZYA GÜVENLİK - ÜYE DENETİMİ\n\nKullanıcı: ${target.tag} (${target.id})\nGörünen Ad: ${targetMember.displayName}\nBot mu: ${target.bot ? 'Evet' : 'Hayır'}\nHesap Oluşturma: ${target.createdAt.toLocaleString('tr-TR')}\nSunucuya Katılma: ${targetMember.joinedAt?.toLocaleString('tr-TR') || '?'}\nRoller: ${targetMember.roles.cache.map(r => r.name).join(', ') || 'Yok'}\nEn Yüksek Rol: ${targetMember.roles.highest.name}\nDurum: ${targetMember.presence?.status || 'offline'}\nSes Kanalı: ${targetMember.voice.channel?.name || 'Yok'}\nGözaltında: ${isCustody ? 'EVET' : 'Hayır'}\n\nSQLite Verileri:\n   Mesaj: ${userData?.messageCount || 0}\n   Ses: ${userData?.voiceMinutes || 0} dk\n   Uyarı: ${warns.length}\n`;
+            let content = `CEZAİR GÜVENLİK - ÜYE DENETİMİ\n\nKullanıcı: ${target.tag} (${target.id})\nGörünen Ad: ${targetMember.displayName}\nBot mu: ${target.bot ? 'Evet' : 'Hayır'}\nHesap Oluşturma: ${target.createdAt.toLocaleString('tr-TR')}\nSunucuya Katılma: ${targetMember.joinedAt?.toLocaleString('tr-TR') || '?'}\nRoller: ${targetMember.roles.cache.map(r => r.name).join(', ') || 'Yok'}\nEn Yüksek Rol: ${targetMember.roles.highest.name}\nDurum: ${targetMember.presence?.status || 'offline'}\nSes Kanalı: ${targetMember.voice.channel?.name || 'Yok'}\nGözaltında: ${isCustody ? 'EVET' : 'Hayır'}\n\nSQLite Verileri:\n   Mesaj: ${userData?.messageCount || 0}\n   Ses: ${userData?.voiceMinutes || 0} dk\n   Uyarı: ${warns.length}\n`;
             const attachment = createLogFile(content, `uye-denetim-${target.id}-${Date.now()}.log`);
             const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} Üye denetim raporu:`, attachment);
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Üye denetim raporu DM'ine gönderildi!` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== RİSKLİ ÜYELER ====================
         else if (commandName === 'riskli-uyeler') {
             const riskli = [];
             for (const [id, m] of guild.members.cache) {
@@ -607,7 +558,7 @@ client.on('interactionCreate', async (interaction) => {
                 const gozalti = gozaltinda[id] ? true : false;
                 if (riskliPerm || yeniHesap || gozalti) riskli.push({ member: m, riskliPerm, yeniHesap, gozalti });
             }
-            let content = `MELEZYA GÜVENLİK - RİSKLİ ÜYELER\nToplam: ${riskli.length}\n\n`;
+            let content = `CEZAİR GÜVENLİK - RİSKLİ ÜYELER\nToplam: ${riskli.length}\n\n`;
             for (const r of riskli) {
                 content += `${r.member.user.tag} (${r.member.id})\n`;
                 if (r.riskliPerm) content += `   [RISKLI] Yüksek yetkili\n`;
@@ -620,10 +571,9 @@ client.on('interactionCreate', async (interaction) => {
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Riskli üyeler raporu DM'ine gönderildi!` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== DAVET DENETLE ====================
         else if (commandName === 'davet-denetle') {
             const invites = await guild.invites.fetch();
-            let content = `MELEZYA GÜVENLİK - DAVET DENETİMİ\nToplam: ${invites.size}\n\n`;
+            let content = `CEZAİR GÜVENLİK - DAVET DENETİMİ\nToplam: ${invites.size}\n\n`;
             for (const [code, inv] of invites) {
                 content += `Kod: ${code}\n   Kanal: ${inv.channel?.name || '?'}\n   Davet Eden: ${inv.inviter?.tag || '?'} (${inv.inviter?.id || '?'})\n   Kullanım: ${inv.uses}/${inv.maxUses || '∞'}\n   Süre: ${inv.maxAge ? `${inv.maxAge} sn` : 'Sınırsız'}\n   Geçici: ${inv.temporary ? 'Evet' : 'Hayır'}\n   Oluşturma: ${inv.createdAt?.toLocaleString('tr-TR') || '?'}\n\n`;
             }
@@ -632,10 +582,9 @@ client.on('interactionCreate', async (interaction) => {
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Davet denetim raporu DM'ine gönderildi!` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== WEBHOOK DENETLE ====================
         else if (commandName === 'webhook-denetle') {
             const webhooks = await guild.fetchWebhooks();
-            let content = `MELEZYA GÜVENLİK - WEBHOOK DENETİMİ\nToplam: ${webhooks.size}\n\n`;
+            let content = `CEZAİR GÜVENLİK - WEBHOOK DENETİMİ\nToplam: ${webhooks.size}\n\n`;
             for (const [id, wh] of webhooks) {
                 content += `İsim: ${wh.name} (${id})\n   Kanal: ${wh.channel?.name || '?'}\n   Sahip: ${wh.owner?.tag || '?'} (${wh.owner?.id || '?'})\n   Avatar: ${wh.avatarURL() || 'Yok'}\n   Token: ${wh.token ? 'Var' : 'Yok'}\n\n`;
             }
@@ -644,11 +593,10 @@ client.on('interactionCreate', async (interaction) => {
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Webhook denetim raporu DM'ine gönderildi!` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== GÜVENLİK RAPORU ====================
         else if (commandName === 'guvenlik-rapor') {
             const now = Date.now();
             const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-            let content = `MELEZYA GÜVENLİK - 7 GÜNLÜK RAPOR\nRapor: ${new Date().toLocaleString('tr-TR')}\nDönem: ${new Date(weekAgo).toLocaleString('tr-TR')} - ${new Date(now).toLocaleString('tr-TR')}\n\n`;
+            let content = `CEZAİR GÜVENLİK - 7 GÜNLÜK RAPOR\nRapor: ${new Date().toLocaleString('tr-TR')}\nDönem: ${new Date(weekAgo).toLocaleString('tr-TR')} - ${new Date(now).toLocaleString('tr-TR')}\n\n`;
             const newMembers = guild.members.cache.filter(m => m.joinedTimestamp > weekAgo);
             content += `YENİ ÜYELER (${newMembers.size})\n`;
             for (const [id, m] of newMembers) content += `${m.user.tag} (${id}) - ${m.joinedAt.toLocaleString('tr-TR')}\n`;
@@ -679,7 +627,6 @@ client.on('interactionCreate', async (interaction) => {
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Güvenlik raporu DM'ine gönderildi!` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== GEÇMİŞ SORGULA ====================
         else if (commandName === 'gecmissorgula') {
             const target = interaction.options.getUser('kisi');
             const targetMember = await guild.members.fetch(target.id).catch(() => null);
@@ -694,7 +641,7 @@ client.on('interactionCreate', async (interaction) => {
                 (logData.links?.length || 0) + (logData.files?.length || 0) + (logData.emojis?.length || 0) +
                 (logData.statusHistory?.length || 0) + (logData.activityHistory?.length || 0) +
                 (logData.usernameHistory?.length || 0) + (logData.avatarHistory?.length || 0);
-            let content = `MELEZYA GÜVENLİK - KULLANICI RAPORU\n\n`;
+            let content = `CEZAİR GÜVENLİK - KULLANICI RAPORU\n\n`;
             content += `TEMEL BILGILER\nKullanıcı Adı: ${target.username}\nGörünen Ad: ${target.globalName || target.username}\nKullanıcı ID: ${target.id}\nBot mu?: ${target.bot ? 'Evet' : 'Hayır'}\nHesap Oluşturma: ${target.createdAt.toLocaleString('tr-TR')}\nSunucuya Katılım: ${targetMember.joinedAt?.toLocaleString('tr-TR') || 'Bilinmiyor'}\n\n`;
             content += `GENEL İSTATİSTİKLER\nToplam Mesaj: ${logData.messageCount || 0}\nToplam Kelime: ${logData.wordCount || 0}\nToplam Karakter: ${logData.characterCount || 0}\nSes Süresi: ${logData.voiceMinutes || 0} dakika\nUyarı Sayısı: ${warnData.length}\nToplam Log Kaydı: ${totalRecords}\n\n`;
             content += `SON 100 MESAJ\n` + ((logData.messages || []).slice(0, 100).map((m, i) => `${i+1}. [${new Date(m.timestamp).toLocaleString('tr-TR')}] #${m.channel}: ${m.content || '(boş)'}`).join('\n') || '• Kayıt yok') + `\n\n`;
@@ -711,27 +658,25 @@ client.on('interactionCreate', async (interaction) => {
             content += `DURUM GEÇMİŞİ (Son 50)\n` + ((logData.statusHistory || []).slice(0, 50).map((s, i) => `${i+1}. [${new Date(s.timestamp).toLocaleString('tr-TR')}] ${s.old} -> ${s.new}`).join('\n') || '• Kayıt yok') + `\n\n`;
             content += `AKTİVİTE GEÇMİŞİ (Son 50)\n` + ((logData.activityHistory || []).slice(0, 50).map((a, i) => `${i+1}. [${new Date(a.timestamp).toLocaleString('tr-TR')}] ${a.old || '(yok)'} -> ${a.new || '(yok)'}`).join('\n') || '• Kayıt yok') + `\n\n`;
             content += `KULLANILAN KOMUTLAR (Son 100)\n` + ((logData.commands || []).slice(0, 100).map((c, i) => `${i+1}. [${new Date(c.timestamp).toLocaleString('tr-TR')}] /${c.command} ${c.args || ''}`).join('\n') || '• Kayıt yok') + `\n\n`;
-            content += `RAPOR SONU - ${new Date().toLocaleString('tr-TR')}\nMELEZYA Bot ${EMOJIS.trbayrak}\n`;
+            content += `RAPOR SONU - ${new Date().toLocaleString('tr-TR')}\nCEZAİR Bot ${EMOJIS.trbayrak}\n`;
             const attachment = new AttachmentBuilder(Buffer.from(content, 'utf-8'), { name: `${target.username}-gecmis.log` });
             const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} **${target.username}** kullanıcısının geçmişi (${totalRecords} kayıt):`, attachment);
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Geçmiş raporu DM'ine gönderildi! (${totalRecords} kayıt)` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi! DM'in kapalı olabilir.` });
         }
-        // ==================== ROL DENETLE ====================
         else if (commandName === 'rol-denetle') {
             const rol = interaction.options.getRole('rol');
             const members = rol.members.map(m => m);
-            let content = `MELEZYA GÜVENLİK - ROL DENETİMİ\n\nRol: ${rol.name} (${rol.id})\nRenk: ${rol.hexColor}\nKonum: ${rol.position}\nMentionable: ${rol.mentionable}\nHoist: ${rol.hoist}\nÜye Sayısı: ${members.length}\n\nYetkiler:\n${rol.permissions.toArray().join(', ') || 'Yok'}\n\nÜyeler:\n`;
+            let content = `CEZAİR GÜVENLİK - ROL DENETİMİ\n\nRol: ${rol.name} (${rol.id})\nRenk: ${rol.hexColor}\nKonum: ${rol.position}\nMentionable: ${rol.mentionable}\nHoist: ${rol.hoist}\nÜye Sayısı: ${members.length}\n\nYetkiler:\n${rol.permissions.toArray().join(', ') || 'Yok'}\n\nÜyeler:\n`;
             for (const m of members) content += `${m.user.tag} (${m.id}) - Katılma: ${m.joinedAt?.toLocaleString('tr-TR') || '?'}\n`;
             const attachment = createLogFile(content, `rol-denetim-${rol.id}-${Date.now()}.log`);
             const dmSuccess = await sendDM(user, `${EMOJIS.kalkan} Rol denetim raporu:`, attachment);
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Rol denetim raporu DM'ine gönderildi!` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== KANAL İZİN TARA ====================
         else if (commandName === 'kanal-izin-tara') {
             const riskli = [];
-            let content = `MELEZYA GÜVENLİK - KANAL İZİN TARAMASI\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n`;
+            let content = `CEZAİR GÜVENLİK - KANAL İZİN TARAMASI\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n`;
             for (const [id, kanal] of guild.channels.cache) {
                 if (kanal.type !== 0 && kanal.type !== 5) continue;
                 const everyoneOverwrite = kanal.permissionOverwrites.cache.get(guild.roles.everyone.id);
@@ -752,7 +697,6 @@ client.on('interactionCreate', async (interaction) => {
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Kanal izin taraması DM'ine gönderildi! (${riskli.length} riskli)` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== WEBHOOK TEMİZLE ====================
         else if (commandName === 'webhook-temizle') {
             const webhooks = await guild.fetchWebhooks();
             if (webhooks.size === 0) return interaction.editReply({ content: `${EMOJIS.bilgi} Sunucuda webhook yok.` });
@@ -774,10 +718,9 @@ client.on('interactionCreate', async (interaction) => {
                 .setColor(0xFFA500)
                 .setTitle(`${EMOJIS.kalkan} WEBHOOK TEMİZLE`)
                 .setDescription(`Sunucuda **${webhooks.size}** webhook var. Silmek istediklerini seç (en fazla 5).`)
-                .setFooter({ text: `MELEZYA Güvenlik ${EMOJIS.trbayrak}` });
+                .setFooter({ text: `CEZAİR Güvenlik ${EMOJIS.trbayrak}` });
             await interaction.editReply({ embeds: [embed], components: [row] });
         }
-        // ==================== RAID MOD ====================
         else if (commandName === 'raid-mod') {
             const sureDk = parseInt(interaction.options.getString('sure')) || 10;
             const guild = interaction.guild;
@@ -795,16 +738,13 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: `${EMOJIS.kalkan} **RAID MOD AKTİF!** ${kilitlenen} kanal kilitlendi. Süre: ${sureDk} dakika.` });
             if (logChannel) {
                 await logChannel.send({ embeds: [new EmbedBuilder()
-                    .setColor(0xFF0000)
-                    .setTitle(`${EMOJIS.kalkan} RAID MOD AKTİF`)
+                    .setColor(0xFF0000).setTitle(`${EMOJIS.kalkan} RAID MOD AKTİF`)
                     .setDescription(`${user.tag} tarafından raid modu açıldı.`)
                     .addFields(
                         { name: 'Kilitlenen Kanal', value: `${kilitlenen}`, inline: true },
                         { name: 'Süre', value: `${sureDk} dakika`, inline: true },
                         { name: 'Yetkili', value: `${user}`, inline: true }
-                    )
-                    .setFooter({ text: `MELEZYA Güvenlik ${EMOJIS.trbayrak}` })
-                    .setTimestamp()] });
+                    ).setFooter({ text: `CEZAİR Güvenlik ${EMOJIS.trbayrak}` }).setTimestamp()] });
             }
             setTimeout(async () => {
                 let acilan = 0;
@@ -818,18 +758,15 @@ client.on('interactionCreate', async (interaction) => {
                 }
                 if (logChannel) {
                     await logChannel.send({ embeds: [new EmbedBuilder()
-                        .setColor(0x00FF00)
-                        .setTitle(`${EMOJIS.yesil} RAID MOD KAPATILDI`)
+                        .setColor(0x00FF00).setTitle(`${EMOJIS.yesil} RAID MOD KAPATILDI`)
                         .setDescription(`Süre doldu, ${acilan} kanal açıldı.`)
-                        .setFooter({ text: `MELEZYA Güvenlik ${EMOJIS.trbayrak}` })
-                        .setTimestamp()] });
+                        .setFooter({ text: `CEZAİR Güvenlik ${EMOJIS.trbayrak}` }).setTimestamp()] });
                 }
             }, sureDk * 60 * 1000);
         }
-        // ==================== YENİ HESAP TARA ====================
         else if (commandName === 'yeni-hesap-tara') {
             const yeniHesaplar = guild.members.cache.filter(m => !m.user.bot && (Date.now() - m.user.createdTimestamp) < 7 * 24 * 60 * 60 * 1000);
-            let content = `MELEZYA GÜVENLİK - YENİ HESAP TARAMASI\nTarih: ${new Date().toLocaleString('tr-TR')}\nToplam: ${yeniHesaplar.size}\n\n`;
+            let content = `CEZAİR GÜVENLİK - YENİ HESAP TARAMASI\nTarih: ${new Date().toLocaleString('tr-TR')}\nToplam: ${yeniHesaplar.size}\n\n`;
             for (const [id, m] of yeniHesaplar) {
                 content += `${m.user.tag} (${id})\n   Hesap Yaşı: ${Math.floor((Date.now() - m.user.createdTimestamp) / (24 * 60 * 60 * 1000))} gün\n   Sunucuya Katılma: ${m.joinedAt?.toLocaleString('tr-TR') || '?'}\n   Roller: ${m.roles.cache.map(r => r.name).join(', ') || 'Yok'}\n\n`;
             }
@@ -838,12 +775,11 @@ client.on('interactionCreate', async (interaction) => {
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Yeni hesap taraması DM'ine gönderildi! (${yeniHesaplar.size} hesap)` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== ŞÜPHELİ ÜYE ====================
         else if (commandName === 'şüpheli-uye') {
             const birGunOnce = Date.now() - 24 * 60 * 60 * 1000;
             const supheliler = guild.members.cache.filter(m => !m.user.bot && m.joinedTimestamp > birGunOnce);
             const database = db.getDB();
-            let content = `MELEZYA GÜVENLİK - ŞÜPHELİ ÜYELER (Son 24 saat katılım, mesaj yok)\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n`;
+            let content = `CEZAİR GÜVENLİK - ŞÜPHELİ ÜYELER (Son 24 saat katılım, mesaj yok)\nTarih: ${new Date().toLocaleString('tr-TR')}\n\n`;
             let sayac = 0;
             for (const [id, m] of supheliler) {
                 const mesajSayi = database.prepare('SELECT COUNT(*) as count FROM messages WHERE userId = ?').get(id);
@@ -858,10 +794,9 @@ client.on('interactionCreate', async (interaction) => {
             if (dmSuccess) await interaction.editReply({ content: `${EMOJIS.yesil} Şüpheli üye raporu DM'ine gönderildi! (${sayac} üye)` });
             else await interaction.editReply({ content: `${EMOJIS.kirmizi} DM gönderilemedi!` });
         }
-        // ==================== BAN LİSTESİ ====================
         else if (commandName === 'ban-listesi') {
             const bans = await guild.bans.fetch();
-            let content = `MELEZYA GÜVENLİK - BAN LİSTESİ\nTarih: ${new Date().toLocaleString('tr-TR')}\nToplam: ${bans.size}\n\n`;
+            let content = `CEZAİR GÜVENLİK - BAN LİSTESİ\nTarih: ${new Date().toLocaleString('tr-TR')}\nToplam: ${bans.size}\n\n`;
             for (const [id, ban] of bans) {
                 content += `${ban.user.tag} (${id})\n   Sebep: ${ban.reason || 'Belirtilmedi'}\n\n`;
             }
@@ -876,7 +811,6 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// =========================== WEBHOOK SEÇİM / BUTON ===========================
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isStringSelectMenu() && !interaction.isButton()) return;
     if (interaction.guildId !== GUILD_ID) return;
@@ -899,7 +833,7 @@ client.on('interactionCreate', async (interaction) => {
                     .setColor(0xFF0000)
                     .setTitle(`${EMOJIS.kalkan} WEBHOOK SİLME ONAYI`)
                     .setDescription(`Aşağıdaki webhook'lar **kalıcı olarak** silinecek:\n\n${liste}\nOnaylıyor musun?`)
-                    .setFooter({ text: `MELEZYA Güvenlik ${EMOJIS.trbayrak}` })],
+                    .setFooter({ text: `CEZAİR Güvenlik ${EMOJIS.trbayrak}` })],
                 components: [row]
             });
         }
@@ -922,7 +856,7 @@ client.on('interactionCreate', async (interaction) => {
                     .setColor(0x00FF00)
                     .setTitle(`${EMOJIS.yesil} WEBHOOK'LAR SİLİNDİ`)
                     .setDescription(`${silinen} webhook silindi.`)
-                    .setFooter({ text: `MELEZYA Güvenlik ${EMOJIS.trbayrak}` })],
+                    .setFooter({ text: `CEZAİR Güvenlik ${EMOJIS.trbayrak}` })],
                 components: []
             });
         }
@@ -932,7 +866,7 @@ client.on('interactionCreate', async (interaction) => {
                     .setColor(0x2B2D31)
                     .setTitle(`${EMOJIS.carpi} İPTAL EDİLDİ`)
                     .setDescription('Webhook silme işlemi iptal edildi.')
-                    .setFooter({ text: `MELEZYA Güvenlik ${EMOJIS.trbayrak}` })],
+                    .setFooter({ text: `CEZAİR Güvenlik ${EMOJIS.trbayrak}` })],
                 components: []
             });
         }
