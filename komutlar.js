@@ -3090,6 +3090,8 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         'dork': { aciklama: 'Google dork URL listesi.', kullanim: `${PREFIX}dork hedef.com` },
                         's3-bucket': { aciklama: 'Açık S3 bucket taraması.', kullanim: `${PREFIX}s3-bucket hedef.com` },
                         'ip-info': { aciklama: 'IP geo/ASN bilgisi.', kullanim: `${PREFIX}ip-info ip` }
+                        'exif': { aciklama: 'Görselden EXIF metadata çıkarır (cihaz, tarih, GPS).', kullanim: `${PREFIX}exif <görsel_url>` },
+                        'social': { aciklama: 'Kullanıcı adını 7 platformda arar (Reddit, GitHub, Telegram, TikTok, Instagram, Steam, Twitch).', kullanim: `${PREFIX}social <kullanıcı>` }
                     };
                     const bilgi = komutBilgileri[arananKomut];
                     if (!bilgi) return message.reply(`${EMOJI.carpi} **\`${arananKomut}\`** komutu hakkında bilgi bulunamadı!`);
@@ -3118,7 +3120,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         { name: `${EMOJI.github} API & OYUN`, value: '`github` `roblox` `minecraft` `deprem` `ülke` `nasa` `spotify` `steam` `twitch` `rawg` `pokemon` `mtg`', inline: false },
                         { name: `${EMOJI.member} BİLGİ`, value: '`ping` `zaman` `kullanıcı` `sunucu` `avatar` `banner` `bot` `aktif` `profil` `günlük-istatistik`', inline: false },
                         { name: `${EMOJI.encode} CIPHER & TARAMA`, value: '`cipher encode/decode/hash/timestamp` `tarama <url> [--full]`', inline: false },
-                        { name: `🔍 RECON & LEAK`, value: '`subdomain` `proxy-scrape` `proxy-liste` `proxy-temizle` `proxy-test` `email-harvest` `github-leak` `paste-search` `wayback` `username-check` `hibp` `paste-leak` `watch` `watch-liste` `watch-sil` `harvest` `crawl` `api-harvest` `dork` `s3-bucket` `ip-info`', inline: false },
+                                                { name: `🔍 RECON & LEAK`, value: '`subdomain` `proxy-scrape` `proxy-liste` `proxy-temizle` `proxy-test` `email-harvest` `github-leak` `paste-search` `wayback` `username-check` `hibp` `paste-leak` `watch` `watch-liste` `watch-sil` `harvest` `crawl` `api-harvest` `dork` `s3-bucket` `ip-info` `exif` `social`', inline: false },
                         { name: `${EMOJI.ayarlar} YÖNETİM (ADMIN)`, value: '`yedek` `yedek-al` `log-ara` `log-istatistik` `takipurl` `takip-liste` `takip-sil` `otomod-durum` `otomod-aç` `otomod-kapa` `otomod-kelime-ekle` `otomod-kelime-sil` `otomod-kelime-liste` `otomod-izinli-kanal-ekle` `otomod-izinli-kanal-sil` `otomod-izinli-kanal-liste`', inline: false }
                     )
                     .setFooter({ text: `${FOOTER} • Toplam 130+ komut • İyi eğlenceler!` })
