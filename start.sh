@@ -45,20 +45,13 @@ echo "✅ Ana bot PID: $ANA_PID"
 sleep 2
 
 echo ""
-echo "🌐 Proxy bot başlatılıyor..."
-node proxy_bot.js &
-PROXY_PID=$!
-echo "✅ Proxy bot PID: $PROXY_PID"
-
-echo ""
 echo "═══════════════════════════════════════════════"
 echo "🎉 Üç bot da çalışıyor!"
 echo "   Guard:  PID $GUARD_PID"
 echo "   Ana:    PID $ANA_PID"
-echo "   Proxy:  PID $PROXY_PID"
 echo "═══════════════════════════════════════════════"
 echo ""
 
-trap "echo ''; echo '🛑 Kapatılıyor...'; kill $GUARD_PID $ANA_PID $PROXY_PID 2>/dev/null; exit" SIGINT SIGTERM
+trap "echo ''; echo '🛑 Kapatılıyor...'; kill $GUARD_PID $ANA_PID 2>/dev/null; exit" SIGINT SIGTERM
 
 wait
