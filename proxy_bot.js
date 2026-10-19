@@ -11,7 +11,7 @@ const EMOJIS = {
     kirmizi: '<:kirmizi:1547954543671771146>',
     sari: '<:sari:1547954546251276419>',
     trbayrak: '<a:trbayrak:1547936258859475014>',
-    logo: '<:logo:1561439840351035434>'
+    logo: '<:logo:1561719099820609566>'
 };
 
 let proxyHavuzu = [];       // { ip, port, protocol, country, latency, lastCheck }
@@ -146,7 +146,7 @@ client.on('messageCreate', async (message) => {
             .setColor(0x4FC3F7)
             .setTitle(`${EMOJIS.logo} PROXY SİSTEMİ`)
             .setDescription(`**Kullanım:**\n\`${PREFIX}proxy kontrol\` — Proxyleri yeniden kontrol et (admin)\n\`${PREFIX}proxy al [adet]\` — Havuzdaki çalışan proxyleri **DM'den** gönderir (max 50)\n\`${PREFIX}proxy istatistik\` — Havuz durumu\n\n**Havuzda:** ${proxyHavuzu.length} çalışan proxy\n**Kontrol edilen:** ${toplamKontrolEdilen}\n**Son güncelleme:** ${sonGuncelleme ? `<t:${Math.floor(sonGuncelleme.getTime()/1000)}:R>` : 'Henüz yok'}`)
-            .setFooter({ text: `MELEZYA Proxy ${EMOJIS.trbayrak}` });
+            .setFooter({ text: `CEZAİR Proxy ${EMOJIS.trbayrak}` });
         await message.reply({ embeds: [embed] });
         return;
     }
@@ -166,7 +166,7 @@ client.on('messageCreate', async (message) => {
             return message.reply(`${EMOJIS.sari} Havuzda henüz çalışan proxy yok. Kontrol devam ediyor, birkaç dakika sonra tekrar dene.`);
         }
         const secilen = rastgeleProxy(adet);
-        let content = `MELEZYA PROXY LISTESI\nTarih: ${new Date().toLocaleString('tr-TR')}\nAdet: ${secilen.length}\n\n`;
+        let content = `CEZAİR PROXY LISTESI\nTarih: ${new Date().toLocaleString('tr-TR')}\nAdet: ${secilen.length}\n\n`;
         for (const p of secilen) {
             content += `${p.protocol}://${p.ip}:${p.port} | ${p.country} | ${p.latency}ms\n`;
         }
@@ -196,7 +196,7 @@ client.on('messageCreate', async (message) => {
             .setColor(0x4FC3F7)
             .setTitle(`${EMOJIS.logo} PROXY İSTATİSTİKLERİ`)
             .setDescription(desc)
-            .setFooter({ text: `MELEZYA Proxy ${EMOJIS.trbayrak}` });
+            .setFooter({ text: `CEZAİR Proxy ${EMOJIS.trbayrak}` });
         await message.reply({ embeds: [embed] });
         return;
     }
