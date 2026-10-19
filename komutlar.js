@@ -1752,6 +1752,118 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 return message.reply(`${EMOJI.carpi} Bilinmeyen komut. \`${PREFIX}cipher\` yaz.`);
             }
 
+                        // ==================== TAKİP URL ====================
+            if (command === 'takipurl') {
+                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
+                const input = args[0];
+                if (!input) return message.reply(`${EMOJI.carpi} Bir davet kodu veya URL belirt! Örnek: \`${PREFIX}takipurl capulcu\``);
+
+                let code = input
+                    .replace(/^https?:\/\//i, '')
+                    .replace(/^(www\.)?(discord\.gg|discord\.com\/invite|discordapp\.com\/invite)\//i, '')
+                    .replace(/\/$/, '');
+
+                if (!code || code.length < 2) return message.reply(`${EMOJI.carpi} Geçersiz davet kodu.`);
+
+                const davetUrl = `https://discord.gg/${code}`;
+                const kontrolUrl = `https://discord.com/api/v10/invites/${code}`;
+
+                // İlk kontrol: davet geçerli mi?
+                try {
+                    const ilkKontrol = await safeFetch(kontrolUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 10000);
+                    if (!ilkKontrol.ok) {
+                        return message.reply(`${EMOJI.carpi} **${davetUrl}** geçerli bir davet değil veya süresi dolmuş. (HTTP ${ilkKontrol.status})`);
+                    }
+                    const davetData = await ilkKontrol.json();
+                    const sunucuAdi = davetData.guild?.name || 'Bilinmiyor';
+                    const uyeSayisi = davetData.approximate_member_count || '?';
+
+                    await message.reply(`${EMOJI.tik} **${davetUrl}** takibe alındı.\nSunucu: **${sunucuAdi}** (${uyeSayisi} üye)\nKontrol aralığı: 5 dakika`);
+
+                    // Takip listesine ekle (in-memory, bot yeniden başlarsa sıfırlanır)
+                    if (!global.takipListesi) global.takipListesi = new Map();
+                    if (global.takipListesi.has(code)) {
+                        return message.reply(`${EMOJI.bilgi} **${davetUrl}** zaten takip listesinde.`);
+                    }
+
+                    global.takipListesi.set(code, {
+                        url: davetUrl,
+                        kanalId: message.channel.id,
+                        userId: message.author.id,
+                        baslangic: Date.now(),
+                        sonDurum: 'aktif'
+                    });
+
+                    // Interval zaten kuruluysa tekrar kurma
+                    if (!global.takipInterval) {
+                        global.takipInterval = setInterval(async () => {
+                            if (!global.takipListesi || global.takipListesi.size === 0) return;
+                            for (const [c, data] of global.takipListesi) {
+                                try {
+                                    const res = await fetch(`https://discord.com/api/v10/invites/${c}`, {
+                                        headers: { 'User-Agent': 'Mozilla/5.0' },
+                                        signal: AbortSignal.timeout(10000)
+                                    });
+                                    if (res.status === 404 || !res.ok) {
+                                        if (data.sonDurum === 'aktif') {
+                                            data.sonDurum = 'bos';
+                                            const user = await client.users.fetch(data.userId).catch(() => null);
+                                            const kanal = await client.channels.fetch(data.kanalId).catch(() => null);
+                                            const mesaj = `URL BOŞALDI!!! ${data.url}`;
+                                            if (user) {
+                                                try { await user.send(mesaj); } catch (e) {}
+                                            }
+                                            if (kanal) {
+                                                try { await kanal.send(`<@${data.userId}> ${mesaj}`); } catch (e) {}
+                                            }
+                                        }
+                                    } else {
+                                        if (data.sonDurum === 'bos') {
+                                            data.sonDurum = 'aktif';
+                                            const user = await client.users.fetch(data.userId).catch(() => null);
+                                            if (user) {
+                                                try { await user.send(`URL TEKRAR AKTİF: ${data.url}`); } catch (e) {}
+                                            }
+                                        }
+                                    }
+                                } catch (e) {}
+                            }
+                        }, 5 * 60 * 1000);
+                    }
+                } catch (e) {
+                    await message.reply(`${EMOJI.carpi} Davet kontrol edilemedi: \`${e.message}\``);
+                }
+                return;
+            }
+
+            if (command === 'takip-liste') {
+                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
+                if (!global.takipListesi || global.takipListesi.size === 0) return message.reply(`${EMOJI.bilgi} Takip listesi boş.`);
+                let desc = '';
+                let i = 1;
+                for (const [code, data] of global.takipListesi) {
+                    desc += `**${i}.** ${data.url} — Durum: \`${data.sonDurum}\`\n`;
+                    i++;
+                }
+                const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.bilgi} TAKİP LİSTESİ`).setDescription(desc).setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            if (command === 'takip-sil') {
+                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
+                const input = args[0];
+                if (!input) return message.reply(`${EMOJI.carpi} Silinecek davet kodunu belirt!`);
+                const code = input.replace(/^https?:\/\/(www\.)?(discord\.gg|discord\.com\/invite)\//i, '').replace(/\/$/, '');
+                if (global.takipListesi && global.takipListesi.has(code)) {
+                    global.takipListesi.delete(code);
+                    await message.reply(`${EMOJI.tik} **${code}** takip listesinden çıkarıldı.`);
+                } else {
+                    await message.reply(`${EMOJI.carpi} **${code}** takip listesinde yok.`);
+                }
+                return;
+            }
+
             // ==================== YARDIM ====================
             if (command === 'yardim' || command === 'yardım' || command === 'help') {
                 if (args[0]) {
