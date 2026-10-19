@@ -150,7 +150,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
         'subdomain', 'proxy-scrape', 'proxy-liste', 'proxy-temizle', 'proxy-test',
         'email-harvest', 'github-leak', 'paste-search', 'wayback', 'username-check',
         'hibp', 'paste-leak', 'watch', 'watch-liste', 'watch-sil', 'harvest',
-        'crawl', 'api-harvest', 'dork', 's3-bucket', 'ip-info'
+         'dork', 's3-bucket'
     ];
 
     const FIKRALAR = [
@@ -2644,6 +2644,375 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     return message.reply({ embeds: [embed] });
                 }
                 return message.reply(`${EMOJI.carpi} Bilinmeyen komut. \`${PREFIX}cipher\` yaz.`);
+            }
+
+                        // ==================== EXIF ====================
+            if (command === 'exif') {
+                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
+                let gorselUrl = args[0];
+                if (!gorselUrl && message.attachments.size > 0) {
+                    const att = message.attachments.first();
+                    if (att.contentType && att.contentType.startsWith('image/')) gorselUrl = att.url;
+                }
+                if (!gorselUrl) return message.reply(`${EMOJI.carpi} Bir görsel URL'si belirt veya görsel ekle! Örnek: \`${PREFIX}exif https://ornek.com/foto.jpg\``);
+
+                await message.reply(`${EMOJI.yukleniyor} **Görsel indiriliyor ve EXIF ayrıştırılıyor...**`);
+
+                try {
+                    const imgRes = await safeFetch(gorselUrl, { headers: TARAYICI_HEADERS }, 15000);
+                    if (!imgRes.ok) return message.reply(`${EMOJI.carpi} Görsel indirilemedi. (HTTP ${imgRes.status})`);
+                    const ct = imgRes.headers.get('content-type') || '';
+                    if (!ct.startsWith('image/')) return message.reply(`${EMOJI.carpi} Bu bir görsel değil. (Content-Type: ${ct || 'bilinmiyor'})`);
+                    const arrayBuf = await imgRes.arrayBuffer();
+                    if (arrayBuf.byteLength > 10 * 1024 * 1024) return message.reply(`${EMOJI.carpi} Görsel 10MB'dan büyük.`);
+                    const buf = Buffer.from(arrayBuf);
+
+                    if (buf[0] !== 0xFF || buf[1] !== 0xD8) {
+                        return message.reply(`${EMOJI.carpi} JPEG değil veya geçersiz. Sadece JPEG destekleniyor.`);
+                    }
+
+                    function readUInt16BE(b, o) { return b.readUInt16BE(o); }
+                    function readUInt32BE(b, o) { return b.readUInt32BE(o); }
+                    function readUInt16LE(b, o) { return b.readUInt16LE(o); }
+                    function readUInt32LE(b, o) { return b.readUInt32LE(o); }
+
+                    const exifTags = {};
+                    let gpsData = null;
+                    let tiffOffset = -1;
+                    let littleEndian = true;
+
+                    let offset = 2;
+                    while (offset < buf.length - 4) {
+                        if (buf[offset] !== 0xFF) break;
+                        const marker = buf[offset + 1];
+                        if (marker === 0xD8 || marker === 0xD9) { offset += 2; continue; }
+                        if (marker >= 0xD0 && marker <= 0xD7) { offset += 2; continue; }
+                        const segLen = readUInt16BE(buf, offset + 2);
+                        if (marker === 0xE1) {
+                            const segStart = offset + 4;
+                            if (segStart + 6 <= buf.length && buf.toString('ascii', segStart, segStart + 4) === 'Exif') {
+                                tiffOffset = segStart + 6;
+                                const byteOrder = buf.toString('ascii', tiffOffset, tiffOffset + 2);
+                                littleEndian = byteOrder === 'II';
+                                break;
+                            }
+                        }
+                        offset += 2 + segLen;
+                    }
+
+                    if (tiffOffset === -1) {
+                        return message.reply(`${EMOJI.bilgi} EXIF metadata bulunamadı (silinmiş veya desteklenmiyor).`);
+                    }
+
+                    const readU16 = littleEndian ? readUInt16LE : readUInt16BE;
+                    const readU32 = littleEndian ? readUInt32LE : readUInt32BE;
+
+                    const ifd0Offset = readU32(buf, tiffOffset + 4);
+                    const entriesCount = readU16(buf, tiffOffset + ifd0Offset);
+
+                    let gpsIfdOffset = -1;
+
+                    for (let i = 0; i < entriesCount; i++) {
+                        const entryOff = tiffOffset + ifd0Offset + 2 + i * 12;
+                        if (entryOff + 12 > buf.length) break;
+                        const tag = readU16(buf, entryOff);
+                        const type = readU16(buf, entryOff + 2);
+                        const count = readU32(buf, entryOff + 4);
+                        const valueOff = entryOff + 8;
+
+                        let valueSize = 0;
+                        if (type === 1 || type === 6 || type === 7) valueSize = count;
+                        else if (type === 2) valueSize = count;
+                        else if (type === 3 || type === 8) valueSize = count * 2;
+                        else if (type === 4 || type === 9) valueSize = count * 4;
+                        else if (type === 5 || type === 10) valueSize = count * 8;
+                        else if (type === 11) valueSize = count * 4;
+                        else if (type === 12) valueSize = count * 8;
+
+                        let dataOff = valueSize > 4 ? tiffOffset + readU32(buf, valueOff) : valueOff;
+                        if (dataOff < 0 || dataOff >= buf.length) continue;
+
+                        const readString = (len) => {
+                            try { return buf.toString('ascii', dataOff, dataOff + len).replace(/\0+$/, '').trim(); } catch (e) { return null; }
+                        };
+
+                        if (tag === 0x010F) exifTags.Make = readString(count);
+                        else if (tag === 0x0110) exifTags.Model = readString(count);
+                        else if (tag === 0x0131) exifTags.Software = readString(count);
+                        else if (tag === 0x0132) exifTags.DateTime = readString(count);
+                        else if (tag === 0x0112) exifTags.Orientation = readU16(buf, valueOff);
+                        else if (tag === 0x0100) exifTags.ImageWidth = readU32(buf, valueOff);
+                        else if (tag === 0x0101) exifTags.ImageHeight = readU32(buf, valueOff);
+                        else if (tag === 0x8769) {
+                            const exifIfdOff = readU32(buf, valueOff);
+                            try {
+                                const exifCount = readU16(buf, tiffOffset + exifIfdOff);
+                                for (let j = 0; j < exifCount; j++) {
+                                    const eOff = tiffOffset + exifIfdOff + 2 + j * 12;
+                                    if (eOff + 12 > buf.length) break;
+                                    const eTag = readU16(buf, eOff);
+                                    const eType = readU16(buf, eOff + 2);
+                                    const eCount = readU32(buf, eOff + 4);
+                                    const eValueOff = eOff + 8;
+                                    let eSize = 0;
+                                    if (eType === 2) eSize = eCount;
+                                    else if (eType === 3) eSize = eCount * 2;
+                                    else if (eType === 4) eSize = eCount * 4;
+                                    else if (eType === 5) eSize = eCount * 8;
+                                    if (eTag === 0x9003) {
+                                        const dtOff = eSize > 4 ? tiffOffset + readU32(buf, eValueOff) : eValueOff;
+                                        try { exifTags.DateTimeOriginal = buf.toString('ascii', dtOff, dtOff + eCount).replace(/\0+$/, '').trim(); } catch (e) {}
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+                        else if (tag === 0x8825) {
+                            gpsIfdOffset = readU32(buf, valueOff);
+                        }
+                    }
+
+                    if (gpsIfdOffset !== -1) {
+                        try {
+                            const gpsCount = readU16(buf, tiffOffset + gpsIfdOffset);
+                            let latRef = null, lonRef = null, altRef = null;
+                            let latVals = null, lonVals = null, altVal = null;
+                            for (let i = 0; i < gpsCount; i++) {
+                                const gOff = tiffOffset + gpsIfdOffset + 2 + i * 12;
+                                if (gOff + 12 > buf.length) break;
+                                const gTag = readU16(buf, gOff);
+                                const gType = readU16(buf, gOff + 2);
+                                const gCount = readU32(buf, gOff + 4);
+                                const gValueOff = gOff + 8;
+                                if (gTag === 0x0001) {
+                                    const o = gCount > 4 ? tiffOffset + readU32(buf, gValueOff) : gValueOff;
+                                    latRef = buf.toString('ascii', o, o + 1);
+                                } else if (gTag === 0x0003) {
+                                    const o = gCount > 4 ? tiffOffset + readU32(buf, gValueOff) : gValueOff;
+                                    lonRef = buf.toString('ascii', o, o + 1);
+                                } else if (gTag === 0x0005) {
+                                    const o = gCount > 4 ? tiffOffset + readU32(buf, gValueOff) : gValueOff;
+                                    altRef = buf.readUInt8(o) === 0 ? 'üstü' : 'altı';
+                                } else if (gTag === 0x0002 && gType === 5 && gCount === 3) {
+                                    const o = tiffOffset + readU32(buf, gValueOff);
+                                    latVals = [
+                                        readU32(buf, o) / readU32(buf, o + 4),
+                                        readU32(buf, o + 8) / readU32(buf, o + 12),
+                                        readU32(buf, o + 16) / readU32(buf, o + 20)
+                                    ];
+                                } else if (gTag === 0x0004 && gType === 5 && gCount === 3) {
+                                    const o = tiffOffset + readU32(buf, gValueOff);
+                                    lonVals = [
+                                        readU32(buf, o) / readU32(buf, o + 4),
+                                        readU32(buf, o + 8) / readU32(buf, o + 12),
+                                        readU32(buf, o + 16) / readU32(buf, o + 20)
+                                    ];
+                                } else if (gTag === 0x0006 && gType === 5 && gCount === 1) {
+                                    const o = tiffOffset + readU32(buf, gValueOff);
+                                    altVal = readU32(buf, o) / readU32(buf, o + 4);
+                                }
+                            }
+                            if (latVals && lonVals) {
+                                let lat = latVals[0] + latVals[1]/60 + latVals[2]/3600;
+                                let lon = lonVals[0] + lonVals[1]/60 + lonVals[2]/3600;
+                                if (latRef === 'S') lat = -lat;
+                                if (lonRef === 'W') lon = -lon;
+                                gpsData = {
+                                    lat: lat.toFixed(6),
+                                    lon: lon.toFixed(6),
+                                    alt: altVal !== null ? `${altVal.toFixed(1)}m (${altRef})` : null,
+                                    maps: `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`
+                                };
+                            }
+                        } catch (e) {}
+                    }
+
+                    const alanlar = [];
+                    if (exifTags.Make || exifTags.Model) alanlar.push({ name: 'Cihaz', value: `${exifTags.Make || ''} ${exifTags.Model || ''}`.trim() || 'Bilinmiyor', inline: false });
+                    if (exifTags.DateTimeOriginal) alanlar.push({ name: 'Çekim Tarihi', value: exifTags.DateTimeOriginal, inline: true });
+                    else if (exifTags.DateTime) alanlar.push({ name: 'Tarih', value: exifTags.DateTime, inline: true });
+                    if (exifTags.Software) alanlar.push({ name: 'Yazılım', value: exifTags.Software, inline: true });
+                    if (exifTags.ImageWidth && exifTags.ImageHeight) alanlar.push({ name: 'Boyut', value: `${exifTags.ImageWidth} x ${exifTags.ImageHeight}`, inline: true });
+                    if (exifTags.Orientation) alanlar.push({ name: 'Oryantasyon', value: `\`${exifTags.Orientation}\``, inline: true });
+                    if (gpsData) {
+                        let gpsVal = `**Enlem:** ${gpsData.lat}\n**Boylam:** ${gpsData.lon}`;
+                        if (gpsData.alt) gpsVal += `\n**Yükseklik:** ${gpsData.alt}`;
+                        gpsVal += `\n[Google Maps](${gpsData.maps})`;
+                        alanlar.push({ name: 'GPS', value: gpsVal, inline: false });
+                    }
+
+                    if (alanlar.length === 0) {
+                        return message.reply(`${EMOJI.bilgi} EXIF metadata bulunamadı (silinmiş veya desteklenmiyor).`);
+                    }
+
+                    const embed = new EmbedBuilder()
+                        .setColor(0x9C27B0)
+                        .setTitle('📸 EXIF Metadata')
+                        .setThumbnail(gorselUrl)
+                        .addFields(alanlar)
+                        .setFooter({ text: FOOTER })
+                        .setTimestamp();
+
+                    await message.reply({ embeds: [embed] });
+                } catch (e) {
+                    await message.reply(`${EMOJI.carpi} EXIF hatası: \`${e.message}\``);
+                }
+                return;
+            }
+
+            // ==================== SOCIAL ====================
+            if (command === 'social') {
+                if (!isAdmin) return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
+                const uname = args[0];
+                if (!uname) return message.reply(`${EMOJI.carpi} Bir kullanıcı adı belirt! Örnek: \`${PREFIX}social kullanici\``);
+
+                await message.reply(`${EMOJI.yukleniyor} **Sosyal medya taraması başlıyor:** \`${uname}\``);
+
+                const bulunanlar = [];
+                const alanlar = [];
+
+                // 1. Reddit
+                try {
+                    const rr = await safeFetch(`https://www.reddit.com/user/${encodeURIComponent(uname)}/about.json`, { headers: { 'User-Agent': 'CezaırBot/1.0' } }, 15000);
+                    if (rr.ok) {
+                        const rj = await rr.json();
+                        const rd = rj.data;
+                        if (rd && !rd.error) {
+                            let val = `**Karma:** ${rd.total_karma || 0} (post: ${rd.link_karma}, comment: ${rd.comment_karma})\n**Kayıt:** ${new Date(rd.created_utc * 1000).toLocaleDateString('tr-TR')}\n**Mod:** ${rd.is_mod ? 'Evet' : 'Hayır'} | **Gold:** ${rd.is_gold ? 'Evet' : 'Hayır'}`;
+                            try {
+                                await sleep(300);
+                                const posts = await safeFetch(`https://www.reddit.com/user/${encodeURIComponent(uname)}/submitted.json?limit=5`, { headers: { 'User-Agent': 'CezaırBot/1.0' } }, 15000);
+                                if (posts.ok) {
+                                    const pj = await posts.json();
+                                    const items = (pj.data?.children || []).map(c => c.data);
+                                    if (items.length > 0) {
+                                        val += `\n\n**Son Postlar:**\n` + items.map(p => `- [${p.title.slice(0, 60)}](https://reddit.com${p.permalink}) (r/${p.subreddit})`).join('\n');
+                                    }
+                                }
+                            } catch (e) {}
+                            alanlar.push({ name: '🔴 Reddit', value: val.slice(0, 1000), inline: false });
+                            bulunanlar.push('Reddit');
+                        }
+                    }
+                } catch (e) {}
+                await sleep(300);
+
+                // 2. GitHub
+                try {
+                    const gr = await safeFetch(`https://api.github.com/users/${encodeURIComponent(uname)}`, { headers: { 'User-Agent': 'CezaırBot', 'Accept': 'application/vnd.github+json' } }, 15000);
+                    if (gr.ok) {
+                        const gj = await gr.json();
+                        let val = `**İsim:** ${gj.name || '-'}\n**Bio:** ${gj.bio ? gj.bio.slice(0, 100) : '-'}\n**Repo:** ${gj.public_repos} | **Takipçi:** ${gj.followers}\n**Kayıt:** ${new Date(gj.created_at).toLocaleDateString('tr-TR')}`;
+                        alanlar.push({ name: '🐙 GitHub', value: val.slice(0, 1000), inline: false });
+                        bulunanlar.push('GitHub');
+                    }
+                } catch (e) {}
+                await sleep(300);
+
+                // 3. Telegram
+                try {
+                    const tr = await safeFetch(`https://t.me/${encodeURIComponent(uname)}`, { headers: TARAYICI_HEADERS }, 15000);
+                    if (tr.ok) {
+                        const thtml = await tr.text();
+                        const ogDesc = thtml.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*)["']/i);
+                        const ogTitle = thtml.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']*)["']/i);
+                        const ogImage = thtml.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']*)["']/i);
+                        if (ogTitle || ogDesc) {
+                            let val = `**Başlık:** ${ogTitle ? ogTitle[1] : '-'}\n**Açıklama:** ${ogDesc ? ogDesc[1].slice(0, 200) : '-'}`;
+                            alanlar.push({ name: '✈️ Telegram', value: val.slice(0, 1000), inline: false });
+                            bulunanlar.push('Telegram');
+                        }
+                    }
+                } catch (e) {}
+                await sleep(300);
+
+                // 4. TikTok
+                try {
+                    const ttr = await safeFetch(`https://www.tiktok.com/@${encodeURIComponent(uname)}`, { headers: TARAYICI_HEADERS }, 15000);
+                    if (ttr.ok) {
+                        const thtml = await ttr.text();
+                        const udm = thtml.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/);
+                        if (udm) {
+                            try {
+                                const data = JSON.parse(udm[1]);
+                                const userData = data.__DEFAULT_SCOPE__?.['webapp.user-detail']?.userInfo?.user;
+                                const stats = data.__DEFAULT_SCOPE__?.['webapp.user-detail']?.userInfo?.stats;
+                                if (userData) {
+                                    let val = `**Bio:** ${userData.signature ? userData.signature.slice(0, 100) : '-'}\n**Takipçi:** ${stats?.followerCount || '-'} | **Video:** ${stats?.videoCount || '-'}`;
+                                    alanlar.push({ name: '🎵 TikTok', value: val.slice(0, 1000), inline: false });
+                                    bulunanlar.push('TikTok');
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                } catch (e) {}
+                await sleep(300);
+
+                // 5. Instagram
+                try {
+                    const ir = await safeFetch(`https://www.instagram.com/${encodeURIComponent(uname)}/?__a=1&__d=dis`, { headers: TARAYICI_HEADERS }, 15000);
+                    if (ir.ok) {
+                        const ij = await ir.json();
+                        const iu = ij.graphql?.user || ij.data?.user;
+                        if (iu) {
+                            let val = `**İsim:** ${iu.full_name || '-'}\n**Bio:** ${iu.biography ? iu.biography.slice(0, 100) : '-'}\n**Takipçi:** ${iu.edge_followed_by?.count || iu.follower_count || '-'}`;
+                            alanlar.push({ name: '📷 Instagram', value: val.slice(0, 1000), inline: false });
+                            bulunanlar.push('Instagram');
+                        }
+                    }
+                } catch (e) {}
+                await sleep(300);
+
+                // 6. Steam
+                try {
+                    const sr = await safeFetch(`https://steamcommunity.com/id/${encodeURIComponent(uname)}/?xml=1`, { headers: TARAYICI_HEADERS }, 15000);
+                    if (sr.ok) {
+                        const sxml = await sr.text();
+                        if (!sxml.includes('<error>')) {
+                            const sid64 = sxml.match(/<steamID64>(\d+)<\/steamID64>/);
+                            const sname = sxml.match(/<steamID><!\[CDATA\[([^\]]+)\]\]><\/steamID>/);
+                            const sstate = sxml.match(/<onlineState>([^<]+)<\/onlineState>/);
+                            let val = `**SteamID64:** ${sid64 ? sid64[1] : '-'}\n**Kullanıcı:** ${sname ? sname[1] : '-'}\n**Durum:** ${sstate ? sstate[1] : '-'}`;
+                            alanlar.push({ name: '🎮 Steam', value: val.slice(0, 1000), inline: false });
+                            bulunanlar.push('Steam');
+                        }
+                    }
+                } catch (e) {}
+                await sleep(300);
+
+                // 7. Twitch
+                try {
+                    const clientId = process.env.TWITCH_CLIENT_ID;
+                    const accessToken = process.env.TWITCH_ACCESS_TOKEN;
+                    if (clientId && accessToken) {
+                        const twr = await safeFetch(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(uname)}`, {
+                            headers: { 'Client-ID': clientId, 'Authorization': `Bearer ${accessToken}` }
+                        }, 15000);
+                        if (twr.ok) {
+                            const twj = await twr.json();
+                            const twu = twj.data?.[0];
+                            if (twu) {
+                                let val = `**İsim:** ${twu.display_name}\n**Bio:** ${twu.description ? twu.description.slice(0, 100) : '-'}\n**Kayıt:** ${new Date(twu.created_at).toLocaleDateString('tr-TR')}`;
+                                alanlar.push({ name: '📺 Twitch', value: val.slice(0, 1000), inline: false });
+                                bulunanlar.push('Twitch');
+                            }
+                        }
+                    }
+                } catch (e) {}
+
+                if (alanlar.length === 0) {
+                    return message.reply(`${EMOJI.bilgi} Bu kullanıcı adı hiçbir platformda bulunamadı.`);
+                }
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x4FC3F7)
+                    .setTitle(`🔍 Sosyal Medya: ${uname}`)
+                    .setDescription(`**Bulunan platform:** ${bulunanlar.length} / 7\n${bulunanlar.join(', ')}`)
+                    .addFields(alanlar)
+                    .setFooter({ text: FOOTER })
+                    .setTimestamp();
+
+                await message.reply({ embeds: [embed] });
+                return;
             }
 
             // ==================== YARDIM ====================
