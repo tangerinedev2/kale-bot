@@ -14,9 +14,11 @@ const EMOJIS = {
     logo: '<:logo:1561439840351035434>'
 };
 
-let proxyHavuzu = [];
+let proxyHavuzu = [];       // { ip, port, protocol, country, latency, lastCheck }
 let sonGuncelleme = null;
 let guncelleniyor = false;
+let toplamKontrolEdilen = 0;
+let toplamCalisan = 0;
 
 const KAYNAKLAR = [
     {
@@ -69,29 +71,40 @@ async function proxyKontrol(proxy) {
         });
         if (!res.ok) return null;
         await res.text();
-        return { ...proxy, latency: Date.now() - baslangic, lastCheck: Date.now(), alive: true };
+        return { ...proxy, latency: Date.now() - baslangic, lastCheck: Date.now() };
     } catch (e) {
         return null;
     }
 }
 
+// Her grup bittiğinde çalışanları ANINDA havuza ekle
 async function havuzuGuncelle() {
     if (guncelleniyor) return;
     guncelleniyor = true;
+    proxyHavuzu = [];
+    toplamKontrolEdilen = 0;
+    toplamCalisan = 0;
     console.log('[Proxy] Havuz güncelleniyor...');
     try {
         const adaylar = await proxyleriCek();
         console.log(`[Proxy] ${adaylar.length} aday, kontrol ediliyor...`);
-        const sonuclar = [];
+
         const parcalar = [];
         for (let i = 0; i < adaylar.length; i += 30) parcalar.push(adaylar.slice(i, i + 30));
+
         for (const parca of parcalar) {
-            const kontrolSonuc = await Promise.all(parca.map(p => proxyKontrol(p)));
-            sonuclar.push(...kontrolSonuc.filter(Boolean));
+            const sonuclar = await Promise.all(parca.map(p => proxyKontrol(p)));
+            const calisanlar = sonuclar.filter(Boolean);
+            // ANINDA havuza ekle
+            proxyHavuzu.push(...calisanlar);
+            toplamKontrolEdilen += parca.length;
+            toplamCalisan = proxyHavuzu.length;
+            console.log(`[Proxy] ${toplamKontrolEdilen} kontrol edildi, ${toplamCalisan} çalışan havuzda.`);
+            // Çok hızlı döngü olmasın, hafif bekle
+            await new Promise(r => setTimeout(r, 50));
         }
-        proxyHavuzu = sonuclar;
         sonGuncelleme = new Date();
-        console.log(`[Proxy] ${proxyHavuzu.length} çalışan proxy havuzda.`);
+        console.log(`[Proxy] Güncelleme tamamlandı. ${proxyHavuzu.length} çalışan proxy havuzda.`);
     } catch (e) {
         console.error('[Proxy] Güncelleme hatası:', e);
     } finally {
@@ -113,6 +126,7 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBit
 
 client.once('ready', async () => {
     console.log(`${EMOJIS.kalkan} Proxy Bot hazır: ${client.user.tag}`);
+    client.user.setPresence({ activities: [{ name: 'Proxy Havuzu', type: 3 }], status: 'online' });
     await havuzuGuncelle();
     setInterval(havuzuGuncelle, 30 * 60 * 1000);
 });
@@ -131,7 +145,7 @@ client.on('messageCreate', async (message) => {
         const embed = new EmbedBuilder()
             .setColor(0x4FC3F7)
             .setTitle(`${EMOJIS.logo} PROXY SİSTEMİ`)
-            .setDescription(`**Kullanım:**\n\`${PREFIX}proxy kontrol\` — Tüm proxyleri yeniden kontrol et (admin)\n\`${PREFIX}proxy al [adet]\` — Çalışan proxy listesini **DM'den** gönderir (max 50)\n\`${PREFIX}proxy istatistik\` — Havuz durumu\n\n**Havuz:** ${proxyHavuzu.length} çalışan proxy\n**Son güncelleme:** ${sonGuncelleme ? `<t:${Math.floor(sonGuncelleme.getTime()/1000)}:R>` : 'Henüz yok'}`)
+            .setDescription(`**Kullanım:**\n\`${PREFIX}proxy kontrol\` — Proxyleri yeniden kontrol et (admin)\n\`${PREFIX}proxy al [adet]\` — Havuzdaki çalışan proxyleri **DM'den** gönderir (max 50)\n\`${PREFIX}proxy istatistik\` — Havuz durumu\n\n**Havuzda:** ${proxyHavuzu.length} çalışan proxy\n**Kontrol edilen:** ${toplamKontrolEdilen}\n**Son güncelleme:** ${sonGuncelleme ? `<t:${Math.floor(sonGuncelleme.getTime()/1000)}:R>` : 'Henüz yok'}`)
             .setFooter({ text: `MELEZYA Proxy ${EMOJIS.trbayrak}` });
         await message.reply({ embeds: [embed] });
         return;
@@ -140,15 +154,17 @@ client.on('messageCreate', async (message) => {
     if (altKomut === 'kontrol') {
         if (!isAdmin) return message.reply(`${EMOJIS.kirmizi} Bu komut sadece yöneticiler için.`);
         if (guncelleniyor) return message.reply(`${EMOJIS.sari} Zaten güncelleniyor, bekle.`);
-        await message.reply(`${EMOJIS.sari} Proxy havuzu güncelleniyor... Bu işlem 1-2 dakika sürebilir.`);
+        await message.reply(`${EMOJIS.sari} Proxy havuzu yeniden kontrol ediliyor. Çalışanlar anında havuza eklenecek.`);
         await havuzuGuncelle();
-        await message.channel.send(`${EMOJIS.yesil} Güncelleme tamamlandı. **${proxyHavuzu.length}** çalışan proxy havuzda.`);
+        await message.channel.send(`${EMOJIS.yesil} Kontrol tamamlandı. **${proxyHavuzu.length}** çalışan proxy havuzda.`);
         return;
     }
 
     if (altKomut === 'al') {
         const adet = Math.min(parseInt(args[1]) || 10, 50);
-        if (proxyHavuzu.length === 0) return message.reply(`${EMOJIS.kirmizi} Havuz boş. Önce \`${PREFIX}proxy kontrol\` yaz.`);
+        if (proxyHavuzu.length === 0) {
+            return message.reply(`${EMOJIS.sari} Havuzda henüz çalışan proxy yok. Kontrol devam ediyor, birkaç dakika sonra tekrar dene.`);
+        }
         const secilen = rastgeleProxy(adet);
         let content = `MELEZYA PROXY LISTESI\nTarih: ${new Date().toLocaleString('tr-TR')}\nAdet: ${secilen.length}\n\n`;
         for (const p of secilen) {
@@ -173,7 +189,7 @@ client.on('messageCreate', async (message) => {
         }
         const topUlkeler = Object.entries(ulkeler).sort((a,b) => b[1]-a[1]).slice(0, 10);
         const ortLatency = proxyHavuzu.length > 0 ? Math.round(proxyHavuzu.reduce((s,p) => s + p.latency, 0) / proxyHavuzu.length) : 0;
-        let desc = `**Toplam çalışan:** ${proxyHavuzu.length}\n**Ortalama gecikme:** ${ortLatency}ms\n**Son güncelleme:** ${sonGuncelleme ? `<t:${Math.floor(sonGuncelleme.getTime()/1000)}:R>` : 'Yok'}\n\n`;
+        let desc = `**Havuzda çalışan:** ${proxyHavuzu.length}\n**Kontrol edilen:** ${toplamKontrolEdilen}\n**Ortalama gecikme:** ${ortLatency}ms\n**Son güncelleme:** ${sonGuncelleme ? `<t:${Math.floor(sonGuncelleme.getTime()/1000)}:R>` : 'Yok'}\n\n`;
         desc += `**Protokoller:**\n${Object.entries(protokoller).map(([k,v]) => `\`${k}\`: ${v}`).join('\n') || 'Yok'}\n\n`;
         desc += `**Ülkeler (top 10):**\n${topUlkeler.map(([k,v]) => `\`${k}\`: ${v}`).join('\n') || 'Yok'}`;
         const embed = new EmbedBuilder()
