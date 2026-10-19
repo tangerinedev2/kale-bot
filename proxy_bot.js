@@ -3,7 +3,7 @@ const { ProxyAgent } = require('undici');
 require('dotenv').config();
 
 const token3 = process.env.TOKEN3;
-const PREFIX = 'mz!';
+const PREFIX = 'c!';
 
 const EMOJIS = {
     kalkan: '<:kalkan:1547954539817345044>',
