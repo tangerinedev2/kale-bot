@@ -4,6 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const dns = require('dns');
+const tls = require('tls');
+const http = require('http');
+const cheerio = require('cheerio');
 
 const db = require('./data/db.js');
 const TRIVIA_SORULARI = require('./trivia.js');
@@ -47,7 +50,7 @@ const EMOJI = {
     nasa: '<:nasa:1559534362171801650>',
     deprem: '<:deprem:1559534536667308052>',
     iyi_ping: '<:iyi_ping:1559535196498436177>',
-    kotu_ping: '<:kotu_ping:1559535195273830431>',
+    kotu_ping: '<:kotu_ping:1559535193830431>',
     saat: '<a:saat:1559535361401552967>',
     member: '<:member:1559535643111985253>',
     bot_logo: '<:bot_logo:1559536020436025344>',
@@ -75,6 +78,54 @@ async function safeFetch(url, options = {}, timeout = 10000) {
     }
 }
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+const TARAYICI_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1'
+};
+
+const SECRET_REGEXES = {
+    aws: /AKIA[0-9A-Z]{16}/g,
+    google: /AIza[0-9A-Za-z\-_]{35}/g,
+    stripe: /sk_live_[0-9a-zA-Z]{24}/g,
+    discord: /[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}/g,
+    jwt: /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
+    firebase: /firebase[a-zA-Z]*["']?\s*[:=]\s*["']([^"']+)/gi,
+    generic: /(api[_-]?key|secret|token|password)["']?\s*[:=]\s*["']([^"']{8,})/gi
+};
+
+function maskSecret(s) {
+    if (!s || s.length < 8) return s;
+    return s.slice(0, 6) + '...' + s.slice(-4);
+}
+
+function extractSecrets(text) {
+    const found = { aws: [], google: [], stripe: [], discord: [], jwt: [], firebase: [], generic: [] };
+    for (const [k, re] of Object.entries(SECRET_REGEXES)) {
+        const matches = text.match(re);
+        if (matches) found[k] = [...new Set(matches)].map(maskSecret);
+    }
+    return found;
+}
+
+function extractEndpoints(text) {
+    const eps = new Set();
+    const re = /(fetch|axios\.(get|post|put|delete|patch)|\.open)\s*\(\s*["']([^"']+)["']/gi;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+        const ep = m[3];
+        if (ep.startsWith('/') || ep.startsWith('http')) eps.add(ep);
+    }
+    return [...eps];
+}
+
 module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG_CHANNEL_ID, KURAL_KANAL_ID, ACIL_DURUM_SIFRE, acilDurum, ayarlar, saveAyarlar, appendUserLog, loadUserLog, saveUserLog, getUserAktiflik, saveAktiflik, getUserWarns, saveWarns, warns, ATATURK_IMAGE, ATATURK_SOZLER, ATATURK_BILGI, RESIM_KLASORU, VIDEO_PATH, ISTIKLAL_PATH, ffmpegPath, audioSettings, playVideoWithAudio, playIstiklal, playCustomSound, playJumpscare, returnToFixedChannel, getMeemFiles, JUMPSCARE_COOLDOWN, JUMPSCARE_FILES, uyariRolGuncelle) => {
 
     Object.assign(EMOJIS, EMOJI);
@@ -95,7 +146,11 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
         'otomod-kelime-ekle', 'otomod-kelime-sil', 'otomod-kelime-liste',
         'otomod-izinli-kanal-ekle', 'otomod-izinli-kanal-sil', 'otomod-izinli-kanal-liste',
         'otomod-durum', 'otomod-aç', 'otomod-ac', 'otomod-kapa',
-        'yedek-al', 'takipurl', 'takip-liste', 'takip-sil'
+        'yedek-al', 'takipurl', 'takip-liste', 'takip-sil',
+        'subdomain', 'proxy-scrape', 'proxy-liste', 'proxy-temizle', 'proxy-test',
+        'email-harvest', 'github-leak', 'paste-search', 'wayback', 'username-check',
+        'hibp', 'paste-leak', 'watch', 'watch-liste', 'watch-sil', 'harvest',
+        'crawl', 'api-harvest', 'dork', 's3-bucket', 'ip-info'
     ];
 
     const FIKRALAR = [
@@ -171,7 +226,6 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             if (ADMIN_ONLY_COMMANDS.includes(command) && !isAdmin) {
                 return message.reply(`${EMOJI.carpi} **Bu komutu sadece yöneticiler kullanabilir!**`);
             }
-
             if (command === 'yedek-al' || command === 'yedekal') {
                 if (!isOwner) return message.reply(`${EMOJI.carpi} **Bu komutu sadece bot sahibi kullanabilir!**`);
                 await message.reply(`${EMOJI.yukleniyor} **Veritabanı yedeği alınıyor...**`);
@@ -1103,7 +1157,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 await message.reply({ embeds: [embed] });
                 return;
             }
-            
+
             // ==================== FİNANS & HAVA ====================
             if (command === 'döviz' || command === 'doviz' || command === 'currency') {
                 try {
@@ -1544,31 +1598,15 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 } catch (e) { message.reply(`${EMOJI.carpi} Scryfall hatası: \`${e.message}\``); }
                 return;
             }
-
-            // ==================== TARAMA (GENİŞLETİLMİŞ + CLOUDFLARE UYUMLU) ====================
+            // ==================== TARAMA (GENİŞLETİLMİŞ + RECON) ====================
             if (command === 'tarama' || command === 'tara') {
                 let url = args[0];
                 if (!url) return message.reply(`${EMOJI.carpi} Bir URL belirt! Örnek: \`${PREFIX}tarama google.com\``);
                 if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url;
                 const isFull = args.includes('--full');
                 const startTime = Date.now();
-                const TIMEOUT_MS = 60000;
-                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                const checkTimeout = () => { if (Date.now() - startTime > TIMEOUT_MS) throw new Error('Tarama süresi aşıldı (60s)'); };
-
-                const TARAYICI_HEADERS = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'none',
-                    'Sec-Fetch-User': '?1',
-                    'Upgrade-Insecure-Requests': '1',
-                    'Cache-Control': 'max-age=0',
-                    'Connection': 'keep-alive'
-                };
+                const TIMEOUT_MS = 90000;
+                const checkTimeout = () => { if (Date.now() - startTime > TIMEOUT_MS) throw new Error('Tarama süresi aşıldı (90s)'); };
 
                 const yukleniyorMsg = await message.channel.send(`${EMOJI.yukleniyor} **Site taranıyor...** \`${url}\` ${isFull ? '(detaylı mod)' : ''}`);
 
@@ -1704,14 +1742,15 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         }
                     }
 
+                    // ==================== SUBDOMAIN KEŞFİ (HER ZAMAN) ====================
                     let subdomains = [];
-                    if (isFull && !cfEngel) {
+                    if (!cfEngel) {
+                        const subSet = new Set();
                         try {
                             await sleep(200); checkTimeout();
                             const crtRes = await safeFetch(`https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`, { headers: TARAYICI_HEADERS }, 20000);
                             if (crtRes.ok) {
                                 const crtData = await crtRes.json();
-                                const subSet = new Set();
                                 for (const row of crtData) {
                                     const names = String(row.name_value || '').split('\n');
                                     for (let n of names) {
@@ -1719,19 +1758,151 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                                         if (n.endsWith(domain) && n !== domain) subSet.add(n);
                                     }
                                 }
-                                for (const sub of subSet) {
-                                    await sleep(200); checkTimeout();
-                                    try {
-                                        const addresses = await dns.promises.resolve4(sub);
-                                        if (addresses && addresses.length > 0) subdomains.push({ sub, ip: addresses[0] });
-                                    } catch (e) {}
-                                }
                             }
                         } catch (e) { console.error('crt.sh hatası:', e.message); }
+                        try {
+                            await sleep(200); checkTimeout();
+                            const htRes = await safeFetch(`https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(domain)}`, { headers: TARAYICI_HEADERS }, 10000);
+                            if (htRes.ok) {
+                                const htTxt = await htRes.text();
+                                for (const line of htTxt.split('\n')) {
+                                    const h = line.split(',')[0]?.trim().toLowerCase();
+                                    if (h && h.endsWith(domain) && h !== domain) subSet.add(h);
+                                }
+                            }
+                        } catch (e) {}
+                        try {
+                            await sleep(200); checkTimeout();
+                            const avRes = await safeFetch(`https://otx.alienvault.com/api/v1/indicators/domain/${encodeURIComponent(domain)}/passive_dns`, { headers: TARAYICI_HEADERS }, 15000);
+                            if (avRes.ok) {
+                                const avData = await avRes.json();
+                                for (const r of (avData.passive_dns || [])) {
+                                    const h = (r.hostname || '').toLowerCase();
+                                    if (h.endsWith(domain) && h !== domain) subSet.add(h);
+                                }
+                            }
+                        } catch (e) {}
+                        for (const sub of subSet) {
+                            await sleep(100); checkTimeout();
+                            try {
+                                const addrs = await dns.promises.resolve4(sub);
+                                if (addrs && addrs.length > 0) subdomains.push({ sub, ip: addrs[0] });
+                            } catch (e) {}
+                        }
                     }
 
-                    let rapor = `CEZAİR SITE TARAMA RAPORU\n=====================================================\nURL: ${url}\nDomain: ${domain}\nTarih: ${new Date().toLocaleString('tr-TR')}\nMod: ${isFull ? 'Detaylı (--full)' : 'Standart'}\nDurum: ${response.status} ${response.statusText}\nYanıt Süresi: ${sure}ms\n`;
-                    if (cfEngel) rapor += `UYARI: Cloudflare/bot koruması tespit edildi. Derin tarama (API, alt sayfa, subdomain) atlandı.\n`;
+                    // ==================== JS SECRETS ====================
+                    const secrets = { aws: [], google: [], stripe: [], discord: [], jwt: [], firebase: [], generic: [] };
+                    const jsSecretsToplam = [];
+                    if (!cfEngel) {
+                        const htmlSec = extractSecrets(html);
+                        for (const [k, v] of Object.entries(htmlSec)) secrets[k].push(...v);
+                        const scriptSrcs = [];
+                        const srcRegex = /<script[^>]+src=["']([^"']+)["']/gi;
+                        let sm;
+                        while ((sm = srcRegex.exec(html)) !== null) {
+                            try {
+                                const abs = new URL(sm[1], url).href;
+                                scriptSrcs.push(abs);
+                            } catch (e) {}
+                        }
+                        for (const src of scriptSrcs.slice(0, 10)) {
+                            await sleep(300); checkTimeout();
+                            try {
+                                const sr = await safeFetch(src, { headers: TARAYICI_HEADERS }, 10000);
+                                if (sr.ok) {
+                                    const js = await sr.text();
+                                    const jsSec = extractSecrets(js);
+                                    for (const [k, v] of Object.entries(jsSec)) {
+                                        v.forEach(x => secrets[k].push(`${x} (${src.split('/').pop().slice(0, 30)})`));
+                                    }
+                                }
+                            } catch (e) {}
+                        }
+                        for (const [k, v] of Object.entries(secrets)) {
+                            jsSecretsToplam.push(...v);
+                        }
+                    }
+
+                    // ==================== PATH KONTROLÜ ====================
+                    const acikPathlar = [];
+                    if (!cfEngel) {
+                        const pathler = ['/.env', '/.env.bak', '/.git/config', '/.git/HEAD', '/config.php.bak', '/backup.zip', '/backup.sql', '/.DS_Store', '/wp-config.php.bak', '/phpinfo.php'];
+                        for (const p of pathler) {
+                            await sleep(200); checkTimeout();
+                            try {
+                                const pr = await safeFetch(new URL(p, url).href, { method: 'HEAD', headers: TARAYICI_HEADERS }, 5000);
+                                if (pr.status === 200) acikPathlar.push(p);
+                            } catch (e) {}
+                        }
+                    }
+
+                    // ==================== CORS TESTİ ====================
+                    let corsFlag = null;
+                    if (!cfEngel) {
+                        try {
+                            await sleep(200); checkTimeout();
+                            const corsRes = await safeFetch(url, { method: 'GET', headers: { ...TARAYICI_HEADERS, 'Origin': 'https://evil.com' } }, 10000);
+                            const acao = corsRes.headers.get('access-control-allow-origin');
+                            if (acao && (acao === '*' || acao === 'https://evil.com')) {
+                                corsFlag = `Access-Control-Allow-Origin: ${acao}`;
+                            }
+                        } catch (e) {}
+                    }
+
+                    // ==================== DNS KAYITLARI ====================
+                    const dnsBilgi = { mx: [], txt: [], ns: [], dmarc: 'Yok', spf: 'Yok' };
+                    try {
+                        dnsBilgi.mx = (await dns.promises.resolveMx(domain)).map(m => `${m.exchange} (${m.priority})`);
+                    } catch (e) {}
+                    try {
+                        const txts = await dns.promises.resolveTxt(domain);
+                        for (const t of txts) {
+                            const joined = t.join('');
+                            dnsBilgi.txt.push(joined.slice(0, 100));
+                            if (joined.startsWith('v=spf1')) dnsBilgi.spf = joined.slice(0, 150);
+                        }
+                    } catch (e) {}
+                    try {
+                        dnsBilgi.ns = await dns.promises.resolveNs(domain);
+                    } catch (e) {}
+                    try {
+                        const dmarcTxt = await dns.promises.resolveTxt(`_dmarc.${domain}`);
+                        for (const t of dmarcTxt) {
+                            const joined = t.join('');
+                            if (joined.startsWith('v=DMARC1')) dnsBilgi.dmarc = joined.slice(0, 150);
+                        }
+                    } catch (e) {}
+
+                    // ==================== SSL SERTİFİKA ====================
+                    const sslBilgi = { issuer: 'Yok', valid_to: 'Yok', days_left: 'Yok', sans: [] };
+                    if (parsedUrl.protocol === 'https:' && !cfEngel) {
+                        try {
+                            await sleep(200); checkTimeout();
+                            const cert = await new Promise((resolve) => {
+                                const socket = tls.connect(443, hostname, { servername: hostname, rejectUnauthorized: false }, () => {
+                                    const c = socket.getPeerCertificate();
+                                    socket.end();
+                                    resolve(c);
+                                });
+                                socket.on('error', () => resolve(null));
+                                socket.setTimeout(8000, () => { socket.destroy(); resolve(null); });
+                            });
+                            if (cert && cert.valid_to) {
+                                sslBilgi.issuer = cert.issuer?.O || cert.issuer?.CN || 'Bilinmiyor';
+                                sslBilgi.valid_to = cert.valid_to;
+                                const dt = new Date(cert.valid_to);
+                                sslBilgi.days_left = Math.floor((dt - Date.now()) / (1000 * 60 * 60 * 24));
+                                if (cert.subjectaltname) {
+                                    sslBilgi.sans = cert.subjectaltname.split(',').map(s => s.trim().replace('DNS:', '')).slice(0, 20);
+                                }
+                            }
+                        } catch (e) {}
+                    }
+
+                    // ==================== RAPOR ====================
+                    let rapor = `CEZAİR SITE TARAMA RAPORU\n=====================================================\nURL: ${url}\nDomain: ${domain}\nTarih: ${new Date().toLocaleString('tr-TR')}\nMod: ${isFull ? 'Detaylı' : 'Standart'}\nDurum: ${response.status} ${response.statusText}\nYanıt Süresi: ${sure}ms\n`;
+                    if (cfEngel) rapor += `UYARI: Cloudflare/bot koruması tespit edildi. Derin tarama sınırlı.\n`;
                     rapor += `\n`;
                     rapor += `[1] TEMEL BİLGİLER\nSayfa Başlığı: ${title}\nMeta Açıklama: ${metaDesc}\nSunucu: ${response.headers.get('server') || 'Bilinmiyor'}\nContent-Type: ${response.headers.get('content-type') || 'Bilinmiyor'}\n\n`;
                     rapor += `[2] TEKNOLOJİLER (${teknolojiler.length})\n` + (teknolojiler.length > 0 ? teknolojiler.map(t => `- ${t}`).join('\n') : '- Tespit edilemedi') + `\n\n`;
@@ -1739,10 +1910,21 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     rapor += `[4] ROBOTS.TXT: ${robotsInfo}\n\n`;
                     rapor += `[5] ALT SAYFALAR (${altSayfalar.size})\n` + (altSayfalar.size > 0 ? Array.from(altSayfalar).slice(0, 100).map(u => `- ${u}`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
                     rapor += `[6] API ENDPOINT'LERİ (${apiEndpoints.size})\n` + (apiEndpoints.size > 0 ? Array.from(apiEndpoints).slice(0, 100).map(a => `- ${a}`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
-                    if (isFull) {
-                        rapor += `[7] SUBDOMAIN'LER (${subdomains.length})\n` + (subdomains.length > 0 ? subdomains.map(s => `- ${s.sub} (${s.ip})`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
-                    }
+                    rapor += `[7] SUBDOMAIN'LER (${subdomains.length})\n` + (subdomains.length > 0 ? subdomains.map(s => `- ${s.sub} (${s.ip})`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
                     rapor += `[8] SITEMAP URL'LERİ (${sitemapUrls.length})\n` + (sitemapUrls.length > 0 ? sitemapUrls.slice(0, 100).map(u => `- ${u}`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
+                    rapor += `[9] JS SECRETS (${jsSecretsToplam.length})\n`;
+                    if (jsSecretsToplam.length === 0) {
+                        rapor += (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı') + '\n';
+                    } else {
+                        for (const [k, v] of Object.entries(secrets)) {
+                            if (v.length > 0) rapor += `  ${k.toUpperCase()} (${v.length}): ${[...new Set(v)].join(', ')}\n`;
+                        }
+                    }
+                    rapor += `\n`;
+                    rapor += `[10] AÇIK PATH'LER (${acikPathlar.length})\n` + (acikPathlar.length > 0 ? acikPathlar.map(p => `- ${p}`).join('\n') : (cfEngel ? '- Cloudflare engeli nedeniyle atlandı' : '- Bulunamadı')) + `\n\n`;
+                    rapor += `[11] CORS\n${corsFlag ? `- ZAFİYET: ${corsFlag}` : '- Sorun tespit edilmedi'}\n\n`;
+                    rapor += `[12] DNS KAYITLARI\nMX: ${dnsBilgi.mx.join(', ') || 'Yok'}\nNS: ${dnsBilgi.ns.join(', ') || 'Yok'}\nSPF: ${dnsBilgi.spf}\nDMARC: ${dnsBilgi.dmarc}\nTXT: ${dnsBilgi.txt.slice(0, 5).join(' | ') || 'Yok'}\n\n`;
+                    rapor += `[13] SSL SERTİFİKA\nIssuer: ${sslBilgi.issuer}\nGeçerlilik: ${sslBilgi.valid_to}\nKalan Gün: ${sslBilgi.days_left}\nSAN: ${sslBilgi.sans.join(', ') || 'Yok'}\n\n`;
                     rapor += `=====================================================\nCEZAİR Bot ${EMOJI.trbayrak}\n`;
 
                     const attachment = new AttachmentBuilder(Buffer.from(rapor, 'utf-8'), { name: `tarama-${domain}-${Date.now()}.txt` });
@@ -1751,17 +1933,24 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                     if (!cfEngel && guvenlik.csp === 'Yok') kritik.push('CSP header eksik');
                     if (!cfEngel && guvenlik.hsts === 'Yok') kritik.push('HSTS header eksik');
                     if (!cfEngel && apiEndpoints.size > 0) kritik.push(`${apiEndpoints.size} API endpoint açıkta`);
+                    if (jsSecretsToplam.length > 0) kritik.push(`${jsSecretsToplam.length} secret sızıntısı`);
+                    if (acikPathlar.length > 0) kritik.push(`${acikPathlar.length} hassas path açık`);
+                    if (corsFlag) kritik.push('CORS zafiyeti');
+                    if (dnsBilgi.spf === 'Yok') kritik.push('SPF kaydı yok');
+                    if (dnsBilgi.dmarc === 'Yok') kritik.push('DMARC kaydı yok');
 
                     const embed = new EmbedBuilder()
                         .setColor(cfEngel ? 0xFF6B00 : (kritik.length > 0 ? 0xFFA500 : 0x00FF00))
                         .setTitle(`Tarama Tamamlandı: ${domain}`)
-                        .setDescription(`**Mod:** ${isFull ? 'Detaylı' : 'Standart'}\n**Süre:** ${Date.now() - startTime}ms${cfEngel ? '\n**UYARI:** Cloudflare engeli tespit edildi, derin tarama sınırlı.' : ''}`)
+                        .setDescription(`**Mod:** ${isFull ? 'Detaylı' : 'Standart'}\n**Süre:** ${Date.now() - startTime}ms${cfEngel ? '\n**UYARI:** Cloudflare engeli tespit edildi.' : ''}`)
                         .addFields(
-                            { name: 'Subdomain', value: `${isFull ? (cfEngel ? 'N/A' : subdomains.length) : 'N/A'}`, inline: true },
+                            { name: 'Subdomain', value: `${cfEngel ? 'N/A' : subdomains.length}`, inline: true },
                             { name: 'API', value: `${cfEngel ? 'N/A' : apiEndpoints.size}`, inline: true },
                             { name: 'Alt Sayfa', value: `${cfEngel ? 'N/A' : altSayfalar.size}`, inline: true },
-                            { name: 'Teknoloji', value: `${teknolojiler.length}`, inline: true },
-                            { name: 'Kritik Bulgular', value: kritik.length > 0 ? kritik.join('\n').slice(0, 500) : 'Yok', inline: false }
+                            { name: 'Secret', value: `${jsSecretsToplam.length}`, inline: true },
+                            { name: 'Açık Path', value: `${acikPathlar.length}`, inline: true },
+                            { name: 'SSL Gün', value: `${sslBilgi.days_left}`, inline: true },
+                            { name: 'Kritik Bulgular', value: kritik.length > 0 ? kritik.join('\n').slice(0, 1000) : 'Yok', inline: false }
                         )
                         .setFooter({ text: `CEZAİR ${EMOJI.trbayrak}` });
 
@@ -1772,7 +1961,627 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 }
                 return;
             }
+            // ==================== RECON: SUBDOMAIN ====================
+            if (command === 'subdomain') {
+                const domain = args[0]?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').toLowerCase();
+                if (!domain) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}subdomain hedef.com\``);
+                await message.reply(`${EMOJI.yukleniyor} **Subdomain keşfi başlıyor:** \`${domain}\``);
+                const subs = new Set();
+                try {
+                    const crtRes = await safeFetch(`https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`, { headers: TARAYICI_HEADERS }, 20000);
+                    if (crtRes.ok) {
+                        const crtData = await crtRes.json();
+                        for (const row of crtData) {
+                            for (let n of String(row.name_value || '').split('\n')) {
+                                n = n.trim().toLowerCase().replace(/^\*\./, '');
+                                if (n.endsWith(domain) && n !== domain) subs.add(n);
+                            }
+                        }
+                    }
+                } catch (e) {}
+                await sleep(300);
+                try {
+                    const htRes = await safeFetch(`https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(domain)}`);
+                    if (htRes.ok) {
+                        const htTxt = await htRes.text();
+                        for (const line of htTxt.split('\n')) {
+                            const h = line.split(',')[0]?.trim();
+                            if (h && h.endsWith(domain) && h !== domain) subs.add(h);
+                        }
+                    }
+                } catch (e) {}
+                await sleep(300);
+                try {
+                    const avRes = await safeFetch(`https://otx.alienvault.com/api/v1/indicators/domain/${encodeURIComponent(domain)}/passive_dns`);
+                    if (avRes.ok) {
+                        const avData = await avRes.json();
+                        for (const r of (avData.passive_dns || [])) {
+                            const h = (r.hostname || '').toLowerCase();
+                            if (h.endsWith(domain) && h !== domain) subs.add(h);
+                        }
+                    }
+                } catch (e) {}
+                const canli = [];
+                for (const sub of subs) {
+                    try {
+                        const addrs = await dns.promises.resolve4(sub);
+                        if (addrs && addrs.length) canli.push({ sub, ip: addrs[0] });
+                    } catch (e) {}
+                }
+                let rapor = `SUBDOMAIN RAPORU\nDomain: ${domain}\nTarih: ${new Date().toLocaleString('tr-TR')}\nToplam: ${canli.length}\n\n`;
+                for (const c of canli) rapor += `${c.sub} - ${c.ip}\n`;
+                const attachment = new AttachmentBuilder(Buffer.from(rapor, 'utf-8'), { name: `subdomain-${domain}.txt` });
+                const embed = new EmbedBuilder()
+                    .setColor(0x4FC3F7)
+                    .setTitle(`Subdomain: ${domain}`)
+                    .setDescription(`**Canlı:** \`${canli.length}\` / **Toplam bulunan:** \`${subs.size}\``)
+                    .setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed], files: [attachment] });
+                return;
+            }
 
+            // ==================== RECON: PROXY SCRAPE ====================
+            if (command === 'proxy-scrape') {
+                await message.reply(`${EMOJI.yukleniyor} **Proxy listeleri çekiliyor...**`);
+                const sources = [
+                    'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
+                    'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt',
+                    'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt',
+                    'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt'
+                ];
+                const all = [];
+                for (const src of sources) {
+                    try {
+                        const r = await safeFetch(src, {}, 15000);
+                        if (r.ok) {
+                            const txt = await r.text();
+                            for (const line of txt.split('\n').slice(0, 2000)) {
+                                const t = line.trim();
+                                if (/^\d{1,3}(\.\d{1,3}){3}:\d+$/.test(t)) {
+                                    const tip = src.includes('socks4') ? 'socks4' : src.includes('socks5') ? 'socks5' : 'http';
+                                    all.push({ addr: t, type: tip, kaynak: src.split('/').pop() });
+                                }
+                            }
+                        }
+                    } catch (e) {}
+                    await sleep(300);
+                }
+                const unique = [];
+                const seen = new Set();
+                for (const p of all) {
+                    if (!seen.has(p.addr)) { seen.add(p.addr); unique.push(p); }
+                }
+                const existing = JSON.parse(db.getSetting('proxy_list') || '[]');
+                const existingAddrs = new Set(existing.map(e => e.addr));
+                const yeni = unique.filter(u => !existingAddrs.has(u.addr));
+                const birlesik = [...existing, ...yeni];
+                db.setSetting('proxy_list', JSON.stringify(birlesik));
+                const turDagilim = { http: 0, socks4: 0, socks5: 0 };
+                for (const p of birlesik) turDagilim[p.type] = (turDagilim[p.type] || 0) + 1;
+                const embed = new EmbedBuilder()
+                    .setColor(0x00FF00)
+                    .setTitle(`Proxy Scrape Tamamlandı`)
+                    .setDescription(`**Toplam:** \`${birlesik.length}\`\n**Yeni eklenen:** \`${yeni.length}\`\n\n**HTTP:** ${turDagilim.http}\n**SOCKS4:** ${turDagilim.socks4}\n**SOCKS5:** ${turDagilim.socks5}`)
+                    .setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            if (command === 'proxy-liste') {
+                const tip = args[0]?.toLowerCase();
+                const list = JSON.parse(db.getSetting('proxy_list') || '[]');
+                const filtre = tip ? list.filter(p => p.type === tip) : list;
+                if (filtre.length === 0) return message.reply(`${EMOJI.bilgi} Proxy listesi boş veya filtreye uyan yok.`);
+                const goster = filtre.slice(0, 50);
+                let desc = goster.map((p, i) => `**${i+1}.** \`${p.addr}\` (${p.type})`).join('\n');
+                if (filtre.length > 50) desc += `\n\n*... ve ${filtre.length - 50} tane daha*`;
+                const embed = new EmbedBuilder().setColor(0x00FF00).setTitle(`${EMOJI.bilgi} PROXY LİSTESİ (${filtre.length})`).setDescription(desc.slice(0, 4000)).setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            if (command === 'proxy-temizle') {
+                db.setSetting('proxy_list', '[]');
+                await message.reply(`${EMOJI.tik} **Proxy listesi temizlendi.**`);
+                return;
+            }
+
+            if (command === 'proxy-test') {
+                const addr = args[0];
+                if (!addr || !addr.includes(':')) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}proxy-test ip:port\``);
+                const [host, portStr] = addr.split(':');
+                const port = parseInt(portStr);
+                await message.reply(`${EMOJI.yukleniyor} **Proxy test ediliyor:** \`${addr}\``);
+                try {
+                    const sonuc = await new Promise((resolve) => {
+                        const req = http.request({
+                            host,
+                            port,
+                            method: 'CONNECT',
+                            path: 'api.ipify.org:443',
+                            timeout: 8000
+                        });
+                        req.on('connect', (res, socket) => {
+                            socket.destroy();
+                            resolve(res.statusCode === 200 ? 'OK (çalışıyor)' : `HTTP ${res.statusCode}`);
+                        });
+                        req.on('error', (e) => resolve(`HATA: ${e.message}`));
+                        req.on('timeout', () => { req.destroy(); resolve('TIMEOUT'); });
+                        req.end();
+                    });
+                    const ok = sonuc.startsWith('OK');
+                    const embed = new EmbedBuilder()
+                        .setColor(ok ? 0x00FF00 : 0xFF0000)
+                        .setTitle(`${ok ? EMOJI.tik : EMOJI.carpi} Proxy Test`)
+                        .setDescription(`**Proxy:** \`${addr}\`\n**Sonuç:** \`${sonuc}\``)
+                        .setFooter({ text: FOOTER });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) {
+                    await message.reply(`${EMOJI.carpi} Test hatası: \`${e.message}\``);
+                }
+                return;
+            }
+
+            // ==================== RECON: EMAIL HARVEST ====================
+            if (command === 'email-harvest') {
+                const domain = args[0]?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').toLowerCase();
+                if (!domain) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}email-harvest hedef.com\``);
+                await message.reply(`${EMOJI.yukleniyor} **Email toplama başlıyor:** \`${domain}\``);
+                const pages = ['/', '/iletisim', '/contact', '/about', '/hakkimizda', '/iletisim.html', '/contact.html'];
+                const emails = new Set();
+                for (const p of pages) {
+                    try {
+                        const r = await safeFetch(`https://${domain}${p}`, { headers: TARAYICI_HEADERS }, 10000);
+                        if (r.ok) {
+                            const html = await r.text();
+                            const matches = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+                            if (matches) matches.forEach(m => emails.add(m.toLowerCase()));
+                            const mailto = html.match(/mailto:([^"'>\s]+)/gi);
+                            if (mailto) mailto.forEach(m => emails.add(m.replace(/mailto:/i, '').toLowerCase().split('?')[0]));
+                        }
+                    } catch (e) {}
+                    await sleep(300);
+                }
+                const dogrulanmis = [];
+                for (const em of emails) {
+                    const dom = em.split('@')[1];
+                    try {
+                        const mx = await dns.promises.resolveMx(dom);
+                        if (mx && mx.length) dogrulanmis.push({ email: em, mx: mx[0].exchange });
+                    } catch (e) {
+                        dogrulanmis.push({ email: em, mx: 'MX YOK' });
+                    }
+                }
+                let rapor = `EMAIL HARVEST RAPORU\nDomain: ${domain}\nToplam: ${dogrulanmis.length}\n\n`;
+                for (const d of dogrulanmis) rapor += `${d.email} | MX: ${d.mx}\n`;
+                const attachment = new AttachmentBuilder(Buffer.from(rapor, 'utf-8'), { name: `email-${domain}.txt` });
+                const embed = new EmbedBuilder()
+                    .setColor(0x4FC3F7)
+                    .setTitle(`Email Harvest: ${domain}`)
+                    .setDescription(`**Bulunan:** \`${dogrulanmis.length}\`\n${dogrulanmis.slice(0, 10).map(d => `- ${d.email}`).join('\n') || '- Yok'}`)
+                    .setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed], files: [attachment] });
+                return;
+            }
+
+            // ==================== RECON: GITHUB LEAK ====================
+            if (command === 'github-leak') {
+                const kelime = args.join(' ');
+                if (!kelime) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}github-leak kelime\``);
+                await message.reply(`${EMOJI.yukleniyor} **GitHub araması yapılıyor:** \`${kelime}\``);
+                try {
+                    const headers = { 'Accept': 'application/vnd.github+json', 'User-Agent': 'CEZAIR-Bot' };
+                    if (process.env.GITHUB_TOKEN) headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+                    const r = await safeFetch(`https://api.github.com/search/code?q=${encodeURIComponent(kelime)}&per_page=20`, { headers }, 15000);
+                    if (r.status === 401) return message.reply(`${EMOJI.carpi} GitHub API token gerekli veya rate limit aşıldı. \`GITHUB_TOKEN\` env ekle.`);
+                    if (r.status === 403) return message.reply(`${EMOJI.carpi} GitHub rate limit aşıldı. Biraz bekle veya \`GITHUB_TOKEN\` ekle.`);
+                    if (!r.ok) return message.reply(`${EMOJI.carpi} GitHub API hatası: HTTP ${r.status}`);
+                    const data = await r.json();
+                    if (!data.items || data.items.length === 0) return message.reply(`${EMOJI.bilgi} Sonuç yok.`);
+                    let desc = `**Toplam:** \`${data.total_count}\`\n\n`;
+                    for (const it of data.items.slice(0, 10)) {
+                        desc += `- [${it.repository.full_name}](${it.html_url}) \`${it.path}\`\n`;
+                    }
+                    const embed = new EmbedBuilder().setColor(0xFF6B6B).setTitle(`${EMOJI.github} GitHub Leak: ${kelime}`).setDescription(desc.slice(0, 4000)).setFooter({ text: FOOTER });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Hata: \`${e.message}\``); }
+                return;
+            }
+
+            // ==================== RECON: PASTE SEARCH ====================
+            if (command === 'paste-search') {
+                const kelime = args.join(' ');
+                if (!kelime) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}paste-search kelime\``);
+                await message.reply(`${EMOJI.yukleniyor} **Paste araması yapılıyor:** \`${kelime}\``);
+                try {
+                    const r = await safeFetch(`https://psbdmp.ws/api/search/${encodeURIComponent(kelime)}`, {}, 15000);
+                    if (!r.ok) return message.reply(`${EMOJI.carpi} psbdmp hatası: HTTP ${r.status}`);
+                    const data = await r.json();
+                    if (!data || !data.data || data.data.length === 0) return message.reply(`${EMOJI.bilgi} Sonuç yok.`);
+                    let desc = `**Toplam:** \`${data.data.length}\`\n\n`;
+                    for (const p of data.data.slice(0, 15)) {
+                        desc += `- https://psbdmp.ws/${p}\n`;
+                    }
+                    const embed = new EmbedBuilder().setColor(0xFF6B6B).setTitle(`${EMOJI.bilgi} Paste Search: ${kelime}`).setDescription(desc.slice(0, 4000)).setFooter({ text: FOOTER });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Hata: \`${e.message}\``); }
+                return;
+            }
+
+            // ==================== RECON: WAYBACK ====================
+            if (command === 'wayback') {
+                const domain = args[0]?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').toLowerCase();
+                if (!domain) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}wayback hedef.com\``);
+                await message.reply(`${EMOJI.yukleniyor} **Wayback taranıyor:** \`${domain}\``);
+                try {
+                    const r = await safeFetch(`http://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(domain)}/*&output=json&fl=original,timestamp,statuscode&collapse=urlkey&limit=500`, {}, 25000);
+                    if (!r.ok) return message.reply(`${EMOJI.carpi} Wayback hatası: HTTP ${r.status}`);
+                    const data = await r.json();
+                    const rows = data.slice(1);
+                    const paths = [...new Set(rows.map(r => r[0]))];
+                    let rapor = `WAYBACK RAPORU\nDomain: ${domain}\nToplam URL: ${paths.length}\n\n`;
+                    for (const p of paths) rapor += `${p}\n`;
+                    const attachment = new AttachmentBuilder(Buffer.from(rapor, 'utf-8'), { name: `wayback-${domain}.txt` });
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`Wayback: ${domain}`).setDescription(`**Bulunan URL:** \`${paths.length}\`\nİlk 5:\n${paths.slice(0, 5).map(p => `- ${p}`).join('\n')}`).setFooter({ text: FOOTER });
+                    await message.reply({ embeds: [embed], files: [attachment] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Hata: \`${e.message}\``); }
+                return;
+            }
+
+            // ==================== RECON: USERNAME CHECK ====================
+            if (command === 'username-check') {
+                const uname = args[0];
+                if (!uname) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}username-check kullanici\``);
+                await message.reply(`${EMOJI.yukleniyor} **Kullanıcı adı kontrol ediliyor:** \`${uname}\``);
+                const siteler = [
+                    { name: 'GitHub', url: `https://github.com/${uname}` },
+                    { name: 'Reddit', url: `https://reddit.com/user/${uname}` },
+                    { name: 'Instagram', url: `https://instagram.com/${uname}` },
+                    { name: 'TikTok', url: `https://tiktok.com/@${uname}` },
+                    { name: 'Steam', url: `https://steamcommunity.com/id/${uname}` },
+                    { name: 'Twitch', url: `https://twitch.tv/${uname}` },
+                    { name: 'Twitter/X', url: `https://x.com/${uname}` }
+                ];
+                const sonuclar = [];
+                for (const s of siteler) {
+                    try {
+                        const r = await safeFetch(s.url, { headers: TARAYICI_HEADERS, method: 'HEAD' }, 8000);
+                        sonuclar.push({ site: s.name, var: r.status === 200, status: r.status });
+                    } catch (e) {
+                        sonuclar.push({ site: s.name, var: false, status: 'ERR' });
+                    }
+                    await sleep(200);
+                }
+                const desc = sonuclar.map(s => `${s.var ? EMOJI.tik : EMOJI.carpi} **${s.site}** — \`${s.status}\``).join('\n');
+                const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.member} Username Check: ${uname}`).setDescription(desc).setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            // ==================== RECON: HIBP ====================
+            if (command === 'hibp') {
+                const email = args[0];
+                if (!email) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}hibp email@ornek.com\``);
+                const key = process.env.HIBP_API_KEY;
+                if (!key) return message.reply(`${EMOJI.carpi} \`HIBP_API_KEY\` env değişkeni gerekli.`);
+                await message.reply(`${EMOJI.yukleniyor} **HIBP sorgulanıyor...**`);
+                try {
+                    const r = await safeFetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}?truncateResponse=true`, {
+                        headers: { 'hibp-api-key': key, 'User-Agent': 'CEZAIR-Bot' }
+                    }, 15000);
+                    if (r.status === 404) return message.reply(`${EMOJI.tik} **${email}** hiçbir breach'te bulunamadı.`);
+                    if (!r.ok) return message.reply(`${EMOJI.carpi} HIBP hatası: HTTP ${r.status}`);
+                    const data = await r.json();
+                    const names = data.map(d => d.Name);
+                    const embed = new EmbedBuilder().setColor(0xFF6B6B).setTitle(`${EMOJI.kalkan} HIBP: ${email}`).setDescription(`**Breach sayısı:** \`${names.length}\`\n\n${names.map(n => `- ${n}`).join('\n')}`).setFooter({ text: FOOTER });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Hata: \`${e.message}\``); }
+                return;
+            }
+
+            // ==================== RECON: PASTE LEAK ====================
+            if (command === 'paste-leak') {
+                const hedef = args[0];
+                if (!hedef) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}paste-leak domain|email\``);
+                await message.reply(`${EMOJI.yukleniyor} **Paste leak taranıyor:** \`${hedef}\``);
+                try {
+                    const r = await safeFetch(`https://psbdmp.ws/api/search/${encodeURIComponent(hedef)}`, {}, 15000);
+                    if (!r.ok) return message.reply(`${EMOJI.carpi} psbdmp hatası: HTTP ${r.status}`);
+                    const data = await r.json();
+                    if (!data || !data.data || data.data.length === 0) return message.reply(`${EMOJI.bilgi} Sonuç yok.`);
+                    let rapor = `PASTE LEAK\nHedef: ${hedef}\nToplam: ${data.data.length}\n\n`;
+                    for (const p of data.data) rapor += `https://psbdmp.ws/${p}\n`;
+                    const attachment = new AttachmentBuilder(Buffer.from(rapor, 'utf-8'), { name: `paste-leak-${hedef}.txt` });
+                    await message.reply({ content: `${EMOJI.tik} **${data.data.length} paste bulundu.**`, files: [attachment] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Hata: \`${e.message}\``); }
+                return;
+            }
+
+            // ==================== WATCH ====================
+            if (command === 'watch') {
+                const url = args[0];
+                if (!url) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}watch url\``);
+                const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+                try {
+                    const r = await safeFetch(fullUrl, { headers: TARAYICI_HEADERS }, 15000);
+                    const html = await r.text();
+                    const hash = crypto.createHash('sha256').update(html).digest('hex');
+                    const id = crypto.randomBytes(8).toString('hex');
+                    const payload = { id, url: fullUrl, channelId: message.channel.id, userId, hash, eklenme: Date.now() };
+                    db.setSetting(`watch_${id}`, JSON.stringify(payload));
+                    await message.reply(`${EMOJI.tik} **Takibe alındı.** ID: \`${id}\`\nURL: ${fullUrl}\nHer 10 dakikada kontrol edilecek.`);
+                } catch (e) {
+                    await message.reply(`${EMOJI.carpi} Watch hatası: \`${e.message}\``);
+                }
+                return;
+            }
+
+            if (command === 'watch-liste') {
+                const all = db.getAllSettings ? db.getAllSettings() : {};
+                const watches = Object.entries(all).filter(([k, v]) => k.startsWith('watch_') && v);
+                if (watches.length === 0) return message.reply(`${EMOJI.bilgi} Kayıtlı watch yok.`);
+                let desc = '';
+                for (const [k, v] of watches) {
+                    try {
+                        const w = JSON.parse(v);
+                        desc += `\`${w.id}\` — ${w.url}\n`;
+                    } catch (e) {}
+                }
+                const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`${EMOJI.bilgi} WATCH LISTESİ`).setDescription(desc.slice(0, 4000)).setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            if (command === 'watch-sil') {
+                const id = args[0];
+                if (!id) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}watch-sil ID\``);
+                db.setSetting(`watch_${id}`, '');
+                await message.reply(`${EMOJI.tik} Watch silindi.`);
+                return;
+            }
+
+            // ==================== HARVEST (ORCHESTRATOR) ====================
+            if (command === 'harvest') {
+                const domain = args[0]?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').toLowerCase();
+                if (!domain) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}harvest hedef.com\``);
+                await message.reply(`${EMOJI.yukleniyor} **Full harvest başlıyor:** \`${domain}\` (bu 30-60sn sürebilir)`);
+                let rapor = `CEZAİR HARVEST RAPORU\nDomain: ${domain}\nTarih: ${new Date().toLocaleString('tr-TR')}\n=====================================================\n\n`;
+                try {
+                    const subs = new Set();
+                    const crt = await safeFetch(`https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`, {}, 20000);
+                    if (crt.ok) {
+                        const d = await crt.json();
+                        for (const row of d) {
+                            for (let n of String(row.name_value || '').split('\n')) {
+                                n = n.trim().toLowerCase().replace(/^\*\./, '');
+                                if (n.endsWith(domain) && n !== domain) subs.add(n);
+                            }
+                        }
+                    }
+                    rapor += `[SUBDOMAINS] (${subs.size})\n${[...subs].join('\n') || '-'}\n\n`;
+                } catch (e) { rapor += `[SUBDOMAINS] Hata: ${e.message}\n\n`; }
+                await sleep(500);
+                try {
+                    const pages = ['/', '/iletisim', '/contact'];
+                    const emails = new Set();
+                    for (const p of pages) {
+                        const r = await safeFetch(`https://${domain}${p}`, { headers: TARAYICI_HEADERS }, 10000);
+                        if (r.ok) {
+                            const html = await r.text();
+                            const m = html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+                            if (m) m.forEach(x => emails.add(x.toLowerCase()));
+                        }
+                        await sleep(300);
+                    }
+                    rapor += `[EMAILS] (${emails.size})\n${[...emails].join('\n') || '-'}\n\n`;
+                } catch (e) { rapor += `[EMAILS] Hata: ${e.message}\n\n`; }
+                await sleep(500);
+                try {
+                    const r = await safeFetch(`http://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(domain)}/*&output=json&fl=original&collapse=urlkey&limit=200`, {}, 25000);
+                    if (r.ok) {
+                        const d = await r.json();
+                        const paths = [...new Set(d.slice(1).map(x => x[0]))];
+                        rapor += `[WAYBACK] (${paths.length})\n${paths.slice(0, 100).join('\n')}\n\n`;
+                    }
+                } catch (e) { rapor += `[WAYBACK] Hata: ${e.message}\n\n`; }
+                await sleep(500);
+                try {
+                    const headers = { 'Accept': 'application/vnd.github+json', 'User-Agent': 'CEZAIR-Bot' };
+                    if (process.env.GITHUB_TOKEN) headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+                    const r = await safeFetch(`https://api.github.com/search/code?q=${encodeURIComponent(domain)}&per_page=10`, { headers }, 15000);
+                    if (r.ok) {
+                        const d = await r.json();
+                        rapor += `[GITHUB] (${d.total_count})\n${(d.items || []).map(i => `${i.repository.full_name} - ${i.path}`).join('\n')}\n\n`;
+                    } else rapor += `[GITHUB] HTTP ${r.status}\n\n`;
+                } catch (e) { rapor += `[GITHUB] Hata: ${e.message}\n\n`; }
+                await sleep(500);
+                try {
+                    const r = await safeFetch(`https://psbdmp.ws/api/search/${encodeURIComponent(domain)}`, {}, 15000);
+                    if (r.ok) {
+                        const d = await r.json();
+                        rapor += `[PASTE] (${d.data?.length || 0})\n${(d.data || []).map(p => `https://psbdmp.ws/${p}`).join('\n')}\n\n`;
+                    }
+                } catch (e) { rapor += `[PASTE] Hata: ${e.message}\n\n`; }
+                const attachment = new AttachmentBuilder(Buffer.from(rapor, 'utf-8'), { name: `harvest-${domain}-${Date.now()}.txt` });
+                const embed = new EmbedBuilder()
+                    .setColor(0x4FC3F7)
+                    .setTitle(`Harvest Tamamlandı: ${domain}`)
+                    .setDescription(`Tüm sonuçlar ekte.`)
+                    .setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed], files: [attachment] });
+                return;
+            }
+
+            // ==================== CRAWL ====================
+            if (command === 'crawl') {
+                const url = args[0];
+                if (!url) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}crawl url [derinlik]\``);
+                const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+                const depth = Math.min(parseInt(args[1]) || 2, 3);
+                await message.reply(`${EMOJI.yukleniyor} **Crawl başlıyor:** \`${fullUrl}\` (derinlik: ${depth})`);
+                try {
+                    const baseHost = new URL(fullUrl).hostname;
+                    const ziyaret = new Set();
+                    const kuyruk = [{ url: fullUrl, d: 0 }];
+                    const sonuclar = [];
+                    while (kuyruk.length > 0 && sonuclar.length < 50) {
+                        const { url: cur, d } = kuyruk.shift();
+                        if (ziyaret.has(cur) || d > depth) continue;
+                        ziyaret.add(cur);
+                        try {
+                            const r = await safeFetch(cur, { headers: TARAYICI_HEADERS }, 10000);
+                            const html = await r.text();
+                            const $ = cheerio.load(html);
+                            const title = $('title').first().text().trim().slice(0, 100);
+                            const desc = $('meta[name="description"]').attr('content')?.slice(0, 200) || '-';
+                            const links = [];
+                            $('a[href]').each((_, el) => {
+                                try {
+                                    const l = new URL($(el).attr('href'), cur);
+                                    if (l.hostname === baseHost) links.push(l.href);
+                                } catch (e) {}
+                            });
+                            sonuclar.push({ url: cur, status: r.status, title, desc, links: links.length });
+                            if (d < depth) {
+                                for (const l of [...new Set(links)].slice(0, 20)) {
+                                    if (!ziyaret.has(l)) kuyruk.push({ url: l, d: d + 1 });
+                                }
+                            }
+                        } catch (e) {}
+                        await sleep(300);
+                    }
+                    let rapor = `CRAWL RAPORU\nBaşlangıç: ${fullUrl}\nDerinlik: ${depth}\nSayfa: ${sonuclar.length}\n\n`;
+                    for (const s of sonuclar) rapor += `[${s.status}] ${s.url}\n  Title: ${s.title}\n  Desc: ${s.desc}\n  Links: ${s.links}\n\n`;
+                    const attachment = new AttachmentBuilder(Buffer.from(rapor, 'utf-8'), { name: `crawl-${baseHost}.txt` });
+                    const embed = new EmbedBuilder().setColor(0x4FC3F7).setTitle(`Crawl: ${baseHost}`).setDescription(`**Sayfa:** \`${sonuclar.length}\`\n**Derinlik:** \`${depth}\``).setFooter({ text: FOOTER });
+                    await message.reply({ embeds: [embed], files: [attachment] });
+                } catch (e) {
+                    await message.reply(`${EMOJI.carpi} Crawl hatası: \`${e.message}\``);
+                }
+                return;
+            }
+
+            // ==================== API HARVEST ====================
+            if (command === 'api-harvest') {
+                const url = args[0];
+                if (!url) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}api-harvest url\``);
+                const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+                await message.reply(`${EMOJI.yukleniyor} **API harvest başlıyor:** \`${fullUrl}\``);
+                try {
+                    const r = await safeFetch(fullUrl, { headers: TARAYICI_HEADERS }, 15000);
+                    const html = await r.text();
+                    const $ = cheerio.load(html);
+                    const endpoints = new Set();
+                    const secrets = { aws: [], google: [], stripe: [], discord: [], jwt: [], firebase: [], generic: [] };
+                    extractEndpoints(html).forEach(e => endpoints.add(e));
+                    const htmlSecrets = extractSecrets(html);
+                    for (const [k, v] of Object.entries(htmlSecrets)) secrets[k].push(...v);
+                    const scriptSrcs = [];
+                    $('script[src]').each((_, el) => {
+                        try {
+                            const s = new URL($(el).attr('src'), fullUrl);
+                            scriptSrcs.push(s.href);
+                        } catch (e) {}
+                    });
+                    for (const src of scriptSrcs.slice(0, 15)) {
+                        try {
+                            const sr = await safeFetch(src, { headers: TARAYICI_HEADERS }, 10000);
+                            if (sr.ok) {
+                                const js = await sr.text();
+                                extractEndpoints(js).forEach(e => endpoints.add(e));
+                                const jsSecrets = extractSecrets(js);
+                                for (const [k, v] of Object.entries(jsSecrets)) secrets[k].push(...v.map(x => `${x} (${src.split('/').pop()})`));
+                            }
+                        } catch (e) {}
+                        await sleep(300);
+                    }
+                    let rapor = `API HARVEST RAPORU\nURL: ${fullUrl}\nTarih: ${new Date().toLocaleString('tr-TR')}\n=====================================================\n\n`;
+                    rapor += `[ENDPOINTS] (${endpoints.size})\n${[...endpoints].join('\n') || '-'}\n\n`;
+                    rapor += `[SECRETS]\n`;
+                    for (const [k, v] of Object.entries(secrets)) {
+                        if (v.length > 0) rapor += `\n${k.toUpperCase()} (${v.length}):\n${[...new Set(v)].join('\n')}\n`;
+                    }
+                    const attachment = new AttachmentBuilder(Buffer.from(rapor, 'utf-8'), { name: `api-harvest-${new URL(fullUrl).hostname}.txt` });
+                    const toplamSecret = Object.values(secrets).reduce((a, b) => a + b.length, 0);
+                    const embed = new EmbedBuilder()
+                        .setColor(toplamSecret > 0 ? 0xFF6B6B : 0x4FC3F7)
+                        .setTitle(`API Harvest: ${new URL(fullUrl).hostname}`)
+                        .setDescription(`**Endpoint:** \`${endpoints.size}\`\n**Secret:** \`${toplamSecret}\`\n**JS dosyası:** \`${scriptSrcs.length}\``)
+                        .setFooter({ text: FOOTER });
+                    await message.reply({ embeds: [embed], files: [attachment] });
+                } catch (e) {
+                    await message.reply(`${EMOJI.carpi} Hata: \`${e.message}\``);
+                }
+                return;
+            }
+
+            // ==================== DORK ====================
+            if (command === 'dork') {
+                const domain = args[0];
+                if (!domain) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}dork hedef.com\``);
+                const dorks = [
+                    `site:pastebin.com "${domain}"`,
+                    `site:ghostbin.com "${domain}"`,
+                    `site:rentry.co "${domain}"`,
+                    `site:controlc.com "${domain}"`,
+                    `site:github.com "${domain}" password`,
+                    `site:github.com "${domain}" api_key`,
+                    `inurl:${domain} ext:env`,
+                    `inurl:${domain} ext:sql`,
+                    `site:${domain} ext:log`,
+                    `site:${domain} ext:bak`
+                ];
+                const desc = dorks.map((d, i) => `**${i+1}.** \`${d}\`\n[Google'da ara](https://google.com/search?q=${encodeURIComponent(d)})`).join('\n\n');
+                const embed = new EmbedBuilder().setColor(0xFF6B6B).setTitle(`${EMOJI.bilgi} DORK LİSTESİ: ${domain}`).setDescription(desc.slice(0, 4000)).setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            // ==================== S3 BUCKET ====================
+            if (command === 's3-bucket') {
+                const domain = args[0]?.replace(/^https?:\/\//, '').replace(/^www\./, '').split('.')[0];
+                if (!domain) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}s3-bucket hedef.com\``);
+                await message.reply(`${EMOJI.yukleniyor} **S3 bucket taraması:** \`${domain}\``);
+                const adaylar = [domain, `${domain}-backup`, `${domain}-assets`, `${domain}-static`, `${domain}-media`, `${domain}-prod`, `${domain}-dev`];
+                const sonuclar = [];
+                for (const b of adaylar) {
+                    try {
+                        const r = await safeFetch(`https://${b}.s3.amazonaws.com/`, { method: 'HEAD' }, 8000);
+                        if (r.status === 200) sonuclar.push({ bucket: b, durum: 'PUBLIC LISTING' });
+                        else if (r.status === 403) sonuclar.push({ bucket: b, durum: 'VAR (kapalı)' });
+                    } catch (e) {}
+                    await sleep(200);
+                }
+                const desc = sonuclar.length > 0 ? sonuclar.map(s => `\`${s.bucket}\` — **${s.durum}**`).join('\n') : 'Hiçbir bucket bulunamadı.';
+                const embed = new EmbedBuilder().setColor(sonuclar.some(s => s.durum === 'PUBLIC LISTING') ? 0xFF6B6B : 0x4FC3F7).setTitle(`${EMOJI.bilgi} S3 Bucket: ${domain}`).setDescription(desc).setFooter({ text: FOOTER });
+                await message.reply({ embeds: [embed] });
+                return;
+            }
+
+            // ==================== IP INFO ====================
+            if (command === 'ip-info') {
+                const ip = args[0];
+                if (!ip) return message.reply(`${EMOJI.carpi} Kullanım: \`${PREFIX}ip-info ip\``);
+                try {
+                    const r = await safeFetch(`https://ipinfo.io/${encodeURIComponent(ip)}/json`);
+                    if (!r.ok) return message.reply(`${EMOJI.carpi} IP bilgisi alınamadı.`);
+                    const d = await r.json();
+                    const embed = new EmbedBuilder()
+                        .setColor(0x4FC3F7)
+                        .setTitle(`${EMOJI.bilgi} IP: ${ip}`)
+                        .addFields(
+                            { name: 'Şehir', value: d.city || '-', inline: true },
+                            { name: 'Bölge', value: d.region || '-', inline: true },
+                            { name: 'Ülke', value: d.country || '-', inline: true },
+                            { name: 'Org', value: d.org || '-', inline: false },
+                            { name: 'Lokasyon', value: d.loc || '-', inline: true },
+                            { name: 'Timezone', value: d.timezone || '-', inline: true }
+                        )
+                        .setFooter({ text: FOOTER });
+                    await message.reply({ embeds: [embed] });
+                } catch (e) { message.reply(`${EMOJI.carpi} Hata: \`${e.message}\``); }
+                return;
+            }
             // ==================== CIPHER ====================
             if (command === 'cipher') {
                 const altKomut = args[0]?.toLowerCase();
@@ -1851,46 +2660,67 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         'kick': { aciklama: 'Kullanıcıyı sunucudan atar.', kullanim: `${PREFIX}kick @kullanıcı [sebep]` },
                         'ban': { aciklama: 'Kullanıcıyı sunucudan yasaklar.', kullanim: `${PREFIX}ban @kullanıcı [sebep]` },
                         'ban-list': { aciklama: 'Tüm banları listeler.', kullanim: `${PREFIX}ban-list` },
-                        'uyar': { aciklama: 'Kullanıcıya uyarı verir (kademeli rol + DM).', kullanim: `${PREFIX}uyar @kullanıcı [sebep]` },
-                        'uyarı-sil': { aciklama: 'Kullanıcının belirtilen uyarısını siler.', kullanim: `${PREFIX}uyarı-sil @kullanıcı <numara>` },
-                        'uyarı-sıfırla': { aciklama: 'Kullanıcının tüm uyarılarını siler.', kullanim: `${PREFIX}uyarı-sıfırla @kullanıcı` },
-                        'hava': { aciklama: 'Belirtilen şehrin hava durumunu gösterir.', kullanim: `${PREFIX}hava [şehir]` },
-                        'döviz': { aciklama: 'Güncel döviz kurlarını gösterir.', kullanim: `${PREFIX}döviz` },
-                        'kripto': { aciklama: 'Güncel kripto para fiyatlarını gösterir.', kullanim: `${PREFIX}kripto` },
-                        'wiki': { aciklama: 'Wikipedia\'dan bilgi getirir.', kullanim: `${PREFIX}wiki <konu>` },
-                        'github': { aciklama: 'GitHub kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}github <kullanıcı>` },
-                        'roblox': { aciklama: 'Roblox kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}roblox <kullanıcı>` },
-                        'minecraft': { aciklama: 'Minecraft oyuncu bilgilerini gösterir.', kullanim: `${PREFIX}minecraft <oyuncu>` },
-                        'borsa': { aciklama: 'Hisse senedi fiyatını gösterir.', kullanim: `${PREFIX}borsa <sembol>` },
-                        'deprem': { aciklama: 'Son depremleri listeler.', kullanim: `${PREFIX}deprem` },
-                        'ülke': { aciklama: 'Ülke bilgilerini gösterir.', kullanim: `${PREFIX}ülke <ülke>` },
-                        'nasa': { aciklama: 'NASA APOD fotoğrafını gösterir.', kullanim: `${PREFIX}nasa` },
-                        'spotify': { aciklama: 'Spotify\'da şarkı arar.', kullanim: `${PREFIX}spotify <şarkı>` },
-                        'steam': { aciklama: 'Steam kullanıcı bilgilerini gösterir.', kullanim: `${PREFIX}steam <kullanıcı/ID>` },
-                        'twitch': { aciklama: 'Twitch kanal durumunu gösterir.', kullanim: `${PREFIX}twitch <kanal>` },
-                        'rawg': { aciklama: 'Oyun bilgilerini gösterir.', kullanim: `${PREFIX}rawg <oyun>` },
-                        'pokemon': { aciklama: 'Pokémon bilgilerini gösterir.', kullanim: `${PREFIX}pokemon <isim>` },
-                        'mtg': { aciklama: 'Magic: The Gathering kart bilgisi gösterir.', kullanim: `${PREFIX}mtg <kart>` },
-                        'banner': { aciklama: 'Kullanıcının banner\'ını gösterir.', kullanim: `${PREFIX}banner [@kullanıcı]` },
-                        'cipher': { aciklama: 'Encode/decode/hash/timestamp yapar.', kullanim: `${PREFIX}cipher encode/decode/hash/timestamp` },
-                        'tarama': { aciklama: 'Bir siteyi güvenlik açısından tarar. --full ile detaylı.', kullanim: `${PREFIX}tarama <url> [--full]` },
-                        'profil': { aciklama: 'Kullanıcı profilini gösterir.', kullanim: `${PREFIX}profil [@kullanıcı]` },
-                        'atam': { aciklama: 'Rastgele Atatürk fotoğrafı ve sözü gönderir.', kullanim: `${PREFIX}atam` },
-                        'log-ara': { aciklama: 'Kullanıcının mesajlarında kelime arar.', kullanim: `${PREFIX}log-ara @kullanıcı <kelime>` },
-                        'log-istatistik': { aciklama: 'Veritabanı tablo istatistiklerini gösterir.', kullanim: `${PREFIX}log-istatistik` },
-                        'yedek-al': { aciklama: 'Veritabanı yedeği alır (sadece bot sahibi).', kullanim: `${PREFIX}yedek-al` },
-                        'takipurl': { aciklama: 'Bir Discord davet linkini 7/24 takibe alır, boşalınca DM atar.', kullanim: `${PREFIX}takipurl <kod/url>` },
-                        'takip-liste': { aciklama: 'Takipteki davet linklerini listeler.', kullanim: `${PREFIX}takip-liste` },
-                        'takip-sil': { aciklama: 'Takip listesinden davet kodu çıkarır.', kullanim: `${PREFIX}takip-sil <kod>` },
-                        'otomod-durum': { aciklama: 'Otomatik moderasyon durumunu gösterir.', kullanim: `${PREFIX}otomod-durum` },
-                        'otomod-kelime-ekle': { aciklama: 'Küfür listesine kelime ekler.', kullanim: `${PREFIX}otomod-kelime-ekle <kelime>` },
-                        'otomod-kelime-sil': { aciklama: 'Küfür listesinden kelime siler.', kullanim: `${PREFIX}otomod-kelime-sil <kelime>` },
-                        'otomod-kelime-liste': { aciklama: 'Küfür listesini DM\'e gönderir.', kullanim: `${PREFIX}otomod-kelime-liste` },
-                        'otomod-izinli-kanal-ekle': { aciklama: 'Kanalı otomatik moddan muaf tutar.', kullanim: `${PREFIX}otomod-izinli-kanal-ekle #kanal` },
-                        'otomod-izinli-kanal-sil': { aciklama: 'Kanal muafiyetini kaldırır.', kullanim: `${PREFIX}otomod-izinli-kanal-sil #kanal` },
-                        'otomod-izinli-kanal-liste': { aciklama: 'Muaf kanalları listeler.', kullanim: `${PREFIX}otomod-izinli-kanal-liste` },
-                        'otomod-aç': { aciklama: 'Otomatik moderasyonu açar.', kullanim: `${PREFIX}otomod-aç` },
-                        'otomod-kapa': { aciklama: 'Otomatik moderasyonu kapatır.', kullanim: `${PREFIX}otomod-kapa` }
+                        'uyar': { aciklama: 'Kullanıcıya uyarı verir.', kullanim: `${PREFIX}uyar @kullanıcı [sebep]` },
+                        'uyarı-sil': { aciklama: 'Belirtilen uyarıyı siler.', kullanim: `${PREFIX}uyarı-sil @kullanıcı <numara>` },
+                        'uyarı-sıfırla': { aciklama: 'Tüm uyarıları siler.', kullanim: `${PREFIX}uyarı-sıfırla @kullanıcı` },
+                        'hava': { aciklama: 'Hava durumu.', kullanim: `${PREFIX}hava [şehir]` },
+                        'döviz': { aciklama: 'Döviz kurları.', kullanim: `${PREFIX}döviz` },
+                        'kripto': { aciklama: 'Kripto fiyatları.', kullanim: `${PREFIX}kripto` },
+                        'wiki': { aciklama: 'Wikipedia bilgisi.', kullanim: `${PREFIX}wiki <konu>` },
+                        'github': { aciklama: 'GitHub kullanıcı bilgisi.', kullanim: `${PREFIX}github <kullanıcı>` },
+                        'roblox': { aciklama: 'Roblox kullanıcı bilgisi.', kullanim: `${PREFIX}roblox <kullanıcı>` },
+                        'minecraft': { aciklama: 'Minecraft oyuncu bilgisi.', kullanim: `${PREFIX}minecraft <oyuncu>` },
+                        'borsa': { aciklama: 'Hisse senedi.', kullanim: `${PREFIX}borsa <sembol>` },
+                        'deprem': { aciklama: 'Son depremler.', kullanim: `${PREFIX}deprem` },
+                        'ülke': { aciklama: 'Ülke bilgisi.', kullanim: `${PREFIX}ülke <ülke>` },
+                        'nasa': { aciklama: 'NASA APOD.', kullanim: `${PREFIX}nasa` },
+                        'spotify': { aciklama: 'Spotify arama.', kullanim: `${PREFIX}spotify <şarkı>` },
+                        'steam': { aciklama: 'Steam kullanıcı bilgisi.', kullanim: `${PREFIX}steam <kullanıcı/ID>` },
+                        'twitch': { aciklama: 'Twitch kanal durumu.', kullanim: `${PREFIX}twitch <kanal>` },
+                        'rawg': { aciklama: 'Oyun bilgisi.', kullanim: `${PREFIX}rawg <oyun>` },
+                        'pokemon': { aciklama: 'Pokémon bilgisi.', kullanim: `${PREFIX}pokemon <isim>` },
+                        'mtg': { aciklama: 'MTG kart bilgisi.', kullanim: `${PREFIX}mtg <kart>` },
+                        'banner': { aciklama: 'Kullanıcı banner.', kullanim: `${PREFIX}banner [@kullanıcı]` },
+                        'cipher': { aciklama: 'Encode/decode/hash/timestamp.', kullanim: `${PREFIX}cipher <encode|decode|hash|timestamp>` },
+                        'tarama': { aciklama: 'Site tarama (recon: subdomain, secret, path, cors, dns, ssl).', kullanim: `${PREFIX}tarama <url> [--full]` },
+                        'profil': { aciklama: 'Kullanıcı profili.', kullanim: `${PREFIX}profil [@kullanıcı]` },
+                        'atam': { aciklama: 'Atatürk fotoğrafı + sözü.', kullanim: `${PREFIX}atam` },
+                        'log-ara': { aciklama: 'Mesajlarda kelime arar.', kullanim: `${PREFIX}log-ara @kullanıcı <kelime>` },
+                        'log-istatistik': { aciklama: 'DB istatistikleri.', kullanim: `${PREFIX}log-istatistik` },
+                        'yedek-al': { aciklama: 'DB yedeği (owner).', kullanim: `${PREFIX}yedek-al` },
+                        'takipurl': { aciklama: 'Discord davet takibi.', kullanim: `${PREFIX}takipurl <kod/url>` },
+                        'takip-liste': { aciklama: 'Takip listesi.', kullanim: `${PREFIX}takip-liste` },
+                        'takip-sil': { aciklama: 'Takipten çıkar.', kullanim: `${PREFIX}takip-sil <kod>` },
+                        'otomod-durum': { aciklama: 'Otomod durumu.', kullanim: `${PREFIX}otomod-durum` },
+                        'otomod-kelime-ekle': { aciklama: 'Küfür kelimesi ekle.', kullanim: `${PREFIX}otomod-kelime-ekle <kelime>` },
+                        'otomod-kelime-sil': { aciklama: 'Küfür kelimesi sil.', kullanim: `${PREFIX}otomod-kelime-sil <kelime>` },
+                        'otomod-kelime-liste': { aciklama: 'Küfür listesi (DM).', kullanim: `${PREFIX}otomod-kelime-liste` },
+                        'otomod-izinli-kanal-ekle': { aciklama: 'Kanala muafiyet.', kullanim: `${PREFIX}otomod-izinli-kanal-ekle #kanal` },
+                        'otomod-izinli-kanal-sil': { aciklama: 'Muafiyet kaldır.', kullanim: `${PREFIX}otomod-izinli-kanal-sil #kanal` },
+                        'otomod-izinli-kanal-liste': { aciklama: 'Muaf kanallar.', kullanim: `${PREFIX}otomod-izinli-kanal-liste` },
+                        'otomod-aç': { aciklama: 'Otomod aç.', kullanim: `${PREFIX}otomod-aç` },
+                        'otomod-kapa': { aciklama: 'Otomod kapat.', kullanim: `${PREFIX}otomod-kapa` },
+                        'subdomain': { aciklama: 'crt.sh + hackertarget + alienvault ile subdomain keşfi.', kullanim: `${PREFIX}subdomain hedef.com` },
+                        'proxy-scrape': { aciklama: 'Public proxy listelerinden çek, DB\'ye kaydet.', kullanim: `${PREFIX}proxy-scrape` },
+                        'proxy-liste': { aciklama: 'DB\'deki proxy\'leri listele.', kullanim: `${PREFIX}proxy-liste [tip]` },
+                        'proxy-temizle': { aciklama: 'Proxy listesini temizle.', kullanim: `${PREFIX}proxy-temizle` },
+                        'proxy-test': { aciklama: 'Tek proxy testi (CONNECT).', kullanim: `${PREFIX}proxy-test ip:port` },
+                        'email-harvest': { aciklama: 'Siteden email topla + MX doğrula.', kullanim: `${PREFIX}email-harvest hedef.com` },
+                        'github-leak': { aciklama: 'GitHub code search.', kullanim: `${PREFIX}github-leak kelime` },
+                        'paste-search': { aciklama: 'psbdmp.ws paste araması.', kullanim: `${PREFIX}paste-search kelime` },
+                        'wayback': { aciklama: 'Wayback Machine URL listesi.', kullanim: `${PREFIX}wayback hedef.com` },
+                        'username-check': { aciklama: '7 sitede username kontrolü.', kullanim: `${PREFIX}username-check kullanici` },
+                        'hibp': { aciklama: 'HIBP breach kontrolü.', kullanim: `${PREFIX}hibp email` },
+                        'paste-leak': { aciklama: 'Domain/email için paste leak.', kullanim: `${PREFIX}paste-leak hedef` },
+                        'watch': { aciklama: 'URL değişim takibi.', kullanim: `${PREFIX}watch url` },
+                        'watch-liste': { aciklama: 'Watch listesi.', kullanim: `${PREFIX}watch-liste` },
+                        'watch-sil': { aciklama: 'Watch sil.', kullanim: `${PREFIX}watch-sil ID` },
+                        'harvest': { aciklama: 'Full harvest (subdomain+email+wayback+github+paste).', kullanim: `${PREFIX}harvest hedef.com` },
+                        'crawl': { aciklama: 'BFS crawl, derinlik 1-3.', kullanim: `${PREFIX}crawl url [derinlik]` },
+                        'api-harvest': { aciklama: 'JS\'lerden endpoint+secret avı.', kullanim: `${PREFIX}api-harvest url` },
+                        'dork': { aciklama: 'Google dork URL listesi.', kullanim: `${PREFIX}dork hedef.com` },
+                        's3-bucket': { aciklama: 'Açık S3 bucket taraması.', kullanim: `${PREFIX}s3-bucket hedef.com` },
+                        'ip-info': { aciklama: 'IP geo/ASN bilgisi.', kullanim: `${PREFIX}ip-info ip` }
                     };
                     const bilgi = komutBilgileri[arananKomut];
                     if (!bilgi) return message.reply(`${EMOJI.carpi} **\`${arananKomut}\`** komutu hakkında bilgi bulunamadı!`);
@@ -1909,7 +2739,7 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                 const embed = new EmbedBuilder()
                     .setColor(0xE30A17)
                     .setTitle(`${EMOJI.kale} CEZAİR BOT KOMUTLARI ${EMOJI.trbayrak}`)
-                    .setDescription(`Merhaba **${message.author.username}**! Toplam **100+ komut** ile hizmetindeyim.\n\n**Detaylı yardım için:** \`${PREFIX}yardim <komut>\``)
+                    .setDescription(`Merhaba **${message.author.username}**! Toplam **130+ komut** ile hizmetindeyim.\n\n**Detaylı yardım için:** \`${PREFIX}yardim <komut>\``)
                     .addFields(
                         { name: `${EMOJI.kalkan} MODERASYON (ADMIN)`, value: '`temizle` `kick` `ban` `unban` `ban-list` `uyar` `uyarılar` `uyarı-sil` `uyarı-sıfırla` `sustur` `susturma-kaldır` `slowmode` `kanal-kilit` `kanal-aç`', inline: false },
                         { name: `${EMOJI.silah} EĞLENCE`, value: '`milyoner` `rusruleti` `ship` `1vs1` `apoyabas`', inline: false },
@@ -1918,10 +2748,11 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
                         { name: `${EMOJI.bilgi} HABER & BİLGİ`, value: '`haber` `namaz` `wiki` `tarihte-bugün`', inline: false },
                         { name: `${EMOJI.github} API & OYUN`, value: '`github` `roblox` `minecraft` `deprem` `ülke` `nasa` `spotify` `steam` `twitch` `rawg` `pokemon` `mtg`', inline: false },
                         { name: `${EMOJI.member} BİLGİ`, value: '`ping` `zaman` `kullanıcı` `sunucu` `avatar` `banner` `bot` `aktif` `profil` `günlük-istatistik`', inline: false },
-                        { name: `${EMOJI.encode} CIPHER & ARAÇLAR`, value: '`cipher encode base64 <metin>` `cipher decode base64 <metin>` `cipher hash <metin>` `cipher timestamp` `tarama <url> [--full]`', inline: false },
+                        { name: `${EMOJI.encode} CIPHER & TARAMA`, value: '`cipher encode/decode/hash/timestamp` `tarama <url> [--full]`', inline: false },
+                        { name: `🔍 RECON & LEAK`, value: '`subdomain` `proxy-scrape` `proxy-liste` `proxy-temizle` `proxy-test` `email-harvest` `github-leak` `paste-search` `wayback` `username-check` `hibp` `paste-leak` `watch` `watch-liste` `watch-sil` `harvest` `crawl` `api-harvest` `dork` `s3-bucket` `ip-info`', inline: false },
                         { name: `${EMOJI.ayarlar} YÖNETİM (ADMIN)`, value: '`yedek` `yedek-al` `log-ara` `log-istatistik` `takipurl` `takip-liste` `takip-sil` `otomod-durum` `otomod-aç` `otomod-kapa` `otomod-kelime-ekle` `otomod-kelime-sil` `otomod-kelime-liste` `otomod-izinli-kanal-ekle` `otomod-izinli-kanal-sil` `otomod-izinli-kanal-liste`', inline: false }
                     )
-                    .setFooter({ text: `${FOOTER} • Toplam 100+ komut • İyi eğlenceler!` })
+                    .setFooter({ text: `${FOOTER} • Toplam 130+ komut • İyi eğlenceler!` })
                     .setTimestamp();
                 await message.reply({ embeds: [embed] });
                 return;
@@ -1973,4 +2804,37 @@ module.exports = async (client, EMOJIS, BAYRAK, LOADING, GUILD_ID, ADMIN_ID, LOG
             console.error('Buton hatası:', e);
         }
     });
+
+    // =========================== WATCH CHECKER (10 DK) ===========================
+    setInterval(async () => {
+        try {
+            const all = db.getAllSettings ? db.getAllSettings() : {};
+            const watchKeys = Object.keys(all).filter(k => k.startsWith('watch_') && all[k]);
+            for (const key of watchKeys) {
+                try {
+                    const w = JSON.parse(all[key]);
+                    if (!w || !w.url) continue;
+                    const r = await safeFetch(w.url, { headers: TARAYICI_HEADERS }, 15000);
+                    if (!r.ok) continue;
+                    const html = await r.text();
+                    const hash = crypto.createHash('sha256').update(html).digest('hex');
+                    if (hash !== w.hash) {
+                        const ch = await client.channels.fetch(w.channelId).catch(() => null);
+                        if (ch) {
+                            const embed = new EmbedBuilder()
+                                .setColor(0xFFA500)
+                                .setTitle(`${EMOJI.sari} WATCH DEĞİŞTİ`)
+                                .setDescription(`**URL:** ${w.url}\n**Kullanıcı:** <@${w.userId}>`)
+                                .setFooter({ text: FOOTER })
+                                .setTimestamp();
+                            await ch.send({ content: `<@${w.userId}>`, embeds: [embed] }).catch(() => {});
+                        }
+                        w.hash = hash;
+                        db.setSetting(key, JSON.stringify(w));
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
+    }, 10 * 60 * 1000);
+
 };
